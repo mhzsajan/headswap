@@ -1,6 +1,7 @@
 package com.yegorkapomidorka.headswap.aa
 
 import com.yegorkapomidorka.headswap.AnnexB
+import com.yegorkapomidorka.headswap.PauseMemory
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -172,6 +173,11 @@ class AaBridgeCore(
     private var vrReply = false                // поток ответа ассистента открыт в канале VR (VR_INIT ушёл)
     @Volatile var huVw20082120 = false         // VW (STATISTIC_INFO 20082120 h93, 20082122 h222, 20082130, 20082134 h224, 20082114 h425): без heartbeat рвёт связь через 3,7-6 с PAUSE
         private set
+    /** Канал STATISTIC_INFO текущей сессии: ключ выученной настройки PAUSE ("канал/транспорт"). */
+    @Volatile var huChannel: String? = null
+        private set
+    /** Память выученных PAUSE-настроек; null - обучение выключено (unit-тесты). Ставит BridgeService при создании ядра. */
+    var pauseMemory: PauseMemory? = null
     @Volatile var huVw20082138 = false         // VW ID (channel 20082138, "VW BT 1538", h196): IDR > ~600 КиБ рвёт USB EIO
         private set
     @Volatile var huHyundaiCn7 = false         // ГУ Hyundai CN7 (product wp_cn7cpe_cn, h218): в режиме «Авто» музыка 32 кГц с ресэмплом 48→32
@@ -350,6 +356,7 @@ class AaBridgeCore(
         gotIdr = false
         huDesayG6S = false                     // HU_INFO / STATISTIC_INFO придут заново в этой сессии
         huVw20082120 = false                   // HU_INFO / STATISTIC_INFO придут заново в этой сессии
+        huChannel = null                       // ключ выученной настройки PAUSE - из STATISTIC_INFO этой сессии
         huHonda = false                        // STATISTIC_INFO придёт заново в этой сессии
         huVwBt1420 = false                     // HU_INFO придёт заново в этой сессии
         huVw20082138 = false                   // HU_INFO / STATISTIC_INFO придут заново в этой сессии
@@ -589,6 +596,7 @@ class AaBridgeCore(
 
     /** STATISTIC_INFO ГУ разобран: запасной признак Desay G6S и признак VW 20082120 - канал сборки прошивки. */
     fun onHuStatistic(channel: String?) {
+        if (channel != null) huChannel = channel
         if (channel == DESAY_G6S_CHANNEL) huDesayG6S = true
         if (channel == HONDA_20772121_CHANNEL) huHonda20772121 = true
         if (channel == MAZDA_20622111_CHANNEL && !huMazda20622111) {
@@ -1362,7 +1370,7 @@ class AaBridgeCore(
             } else {
                 log("BRIDGE IDR -> CarLife ${payload.size} Б nal=${AnnexB.nalTypes(payload)} (SPS/PPS ${if (payload.size != b.size) "склеены" else "в кадре"})", true)
             }
-            AaState.status = "мост: AA -> CarLife"
+            AaState.status = "bridge: AA -> CarLife"
             return
         }
         val out = h295Prepare(b, types)
@@ -1517,7 +1525,7 @@ class AaBridgeCore(
             } else {
                 log("BRIDGE IDR энкодера -> CarLife ${payload.size} Б nal=${AnnexB.nalTypes(payload)}", true)
             }
-            AaState.status = "мост: AA -> CarLife (перекодирование)"
+            AaState.status = "bridge: AA -> CarLife (transcoding)"
             if (huVw20082138) link.onEncodedKeyFrame(payload.size)
             return
         }
@@ -1727,13 +1735,13 @@ class AaBridgeCore(
             0x07 to -1,     // SELECTOR_PREVIOUS -> против часовой
         )
 
-        const val TEXT_START_SERVER = "Запустите сервер ГУ в Android Auto"
-        const val TEXT_WAIT_FRAME = "Android Auto: жду кадр..."
-        const val TEXT_AA_LOST = "Android Auto отключился, перезапустите сервер ГУ"
-        const val TEXT_STARTING_SERVER = "Запускаю сервер ГУ..."
-        const val TEXT_RESTARTING_SERVER = "Android Auto отключился, перезапускаю сервер ГУ..."
-        const val TEXT_UNLOCK_PHONE = "Разблокируйте телефон"
-        const val TEXT_AA_CONSENT = "Завершите настройку Android Auto на телефоне"
+        const val TEXT_START_SERVER = "Start the head unit server in Android Auto"
+        const val TEXT_WAIT_FRAME = "Android Auto: waiting for a frame..."
+        const val TEXT_AA_LOST = "Android Auto disconnected, restart the head unit server"
+        const val TEXT_STARTING_SERVER = "Starting the head unit server..."
+        const val TEXT_RESTARTING_SERVER = "Android Auto disconnected, restarting the head unit server..."
+        const val TEXT_UNLOCK_PHONE = "Unlock the phone"
+        const val TEXT_AA_CONSENT = "Finish setting up Android Auto on the phone"
         const val DESAY_MANUFACTURER = "Desay SV Automotive"
         const val DESAY_G6S_MODEL = "G6S"
         const val DESAY_G6S_CHANNEL = "20622116"          // STATISTIC_INFO.channel у Mazda CX-5; Vezel - 20832125, другая Mazda - 21520001
@@ -1893,7 +1901,7 @@ class AaConnector(
                     log("BRIDGE сервер ГУ Android Auto недоступен (connection refused), повторяю каждые ${retryMs / 1000.0} с", true)
                     unavailableLogged = true
                 }
-                AaState.status = "мост: жду сервер ГУ AA"
+                AaState.status = "bridge: waiting for AA head unit server"
                 // автозапуск мог упереться в блокировку экрана: пока сервера нет, периодически просим повтор
                 val nowMs = System.nanoTime() / 1_000_000
                 if (serverPrep != null && !stopping && refusals >= 2 && nowMs - lastRetryPrepAt >= RETRY_PREP_MS) {
@@ -1904,7 +1912,7 @@ class AaConnector(
                 unavailableLogged = false
                 refusals = 0
                 log("BRIDGE AA-сессия завершена (established=${s.established}, video=${s.videoStarted})", true)
-                AaState.status = "мост: AA отключился"
+                AaState.status = "bridge: AA disconnected"
                 core.onAaEnded(s.established)
                 if (s.established) {
                     bareEofs = 0

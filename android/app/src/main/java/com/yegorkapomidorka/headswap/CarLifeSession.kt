@@ -67,6 +67,9 @@ class CarLifeSession(
     /** Транспорт сессии: usb-aoa, tcp-debug или tcp6. */
     val transportKind: String get() = transport.caps.kind
 
+    /** Ключ выученной настройки PAUSE: "канал/транспорт"; null - ГУ не прислало STATISTIC_INFO. */
+    val pauseLearnKey: String? get() = bridge.huChannel?.let { "$it/${if (air) "air" else "usb"}" }
+
     /** Воздух (6 сокетов): своя лесенка битрейта, PAUSE-keepalive чаще, WL-строки видео. USB и tcp-debug - как было. */
     private val air = transport.caps == TransportCaps.TCP6
     private val bitratePolicy = BitratePolicy(mode.bitrate, profile = if (air) BitrateProfile.WIFI else BitrateProfile.USB)
@@ -109,6 +112,17 @@ class CarLifeSession(
     @Volatile private var csd: ByteArray? = null
     @Volatile private var csdPending = true
     @Volatile private var paused = false
+    /** Когда пришёл PAUSE (elapsedRealtime); 0 - не на паузе. */
+    @Volatile private var pausedAtMs = 0L
+    /** Сколько длилась пауза, если сессия закрылась на паузе; 0 - закрылись не на паузе. */
+    @Volatile var closedWhilePausedMs = 0L
+        private set
+    /** На паузе слали VIDEO_HEARTBEAT: обрыв не из-за пустого VIDEO_DATA, учить нечему. */
+    @Volatile var pauseUsedHeartbeatAtClose = false
+        private set
+    /** Ключ выученной настройки на момент закрытия: ядро может сбросить канал раньше, чем придёт onSessionClosed. */
+    @Volatile var pauseLearnKeyAtClose: String? = null
+        private set
 
     // находки для итогового резюме
     private var huVersion = "-"
@@ -164,7 +178,7 @@ class CarLifeSession(
             WLog.ev(WLog.VIDEO, "policy", "profile" to bitratePolicy.profile.name, "startKbps" to bitratePolicy.startBps / 1000,
                 "ceilingKbps" to bitratePolicy.ceilingBps / 1000, "mode" to mode.label, "transcode" to bridge.transcodeEnabled)
         }
-        CarLifeState.status = "соединено, жду HU_PROTOCOL_VERSION"
+        CarLifeState.status = "connected, waiting for HU_PROTOCOL_VERSION"
         transport.start(::dispatch, ::logTx, ::close)
         sched.scheduleWithFixedDelay({ tick() }, 1, 1, TimeUnit.SECONDS)
         sched.scheduleWithFixedDelay({ pauseHeartbeat() }, PAUSE_HEARTBEAT_MS, PAUSE_HEARTBEAT_MS, TimeUnit.MILLISECONDS)
@@ -173,6 +187,13 @@ class CarLifeSession(
 
     fun close(reason: String) {
         if (!closed.compareAndSet(false, true)) return
+        val now = SystemClock.elapsedRealtime()
+        if (paused && pausedAtMs != 0L) {
+            // запоминаем ДО остановки планировщика: BridgeService решит, учить ли канал
+            closedWhilePausedMs = now - pausedAtMs
+            pauseUsedHeartbeatAtClose = pauseHeartbeatHu
+            pauseLearnKeyAtClose = pauseLearnKey
+        }
         AppLog.i("сессия: закрытие, причина: $reason")
         bridge.onCarlifeClosed(this)
         if (air) {
@@ -182,7 +203,7 @@ class CarLifeSession(
         }
         WLog.ev(WLog.LINK, "session-end", "transport" to transport.caps.kind, "aliveS" to (SystemClock.elapsedRealtime() - t0) / 1000, "why" to reason)
         logSummary(reason)
-        CarLifeState.status = "закрыто: $reason"
+        CarLifeState.status = "closed: $reason"
         try {
             sched.shutdownNow()
             metaExec.shutdownNow()
@@ -283,7 +304,7 @@ class CarLifeSession(
                 } catch (_: java.util.concurrent.RejectedExecutionException) {
                     // сессия уже закрывается
                 }
-                CarLifeState.status = "handshake: стартовая пачка отправлена"
+                CarLifeState.status = "handshake: initial batch sent"
             }
             Msg.HU_INFO -> {
                 huInfo = PbText.render(m.body, Schemas.deviceInfo)
@@ -376,6 +397,7 @@ class CarLifeSession(
             Msg.VIDEO_ENCODER_START -> onVideoStart()
             Msg.VIDEO_ENCODER_PAUSE -> {
                 paused = true
+                pausedAtMs = SystemClock.elapsedRealtime()
                 if (pauseHeartbeatHu) { // первый heartbeat сразу; Desay по USB - как раньше, через 2 с
                     lastVideoTx = 0L
                     pauseHeartbeat()
@@ -521,6 +543,7 @@ class CarLifeSession(
     /** START: гейт AA сбрасывается, заглушка (если активна) стартует с SPS+PPS+IDR. */
     private fun onVideoStart() {
         paused = false
+        pausedAtMs = 0L
         if (pendingW <= 0) {
             pendingW = mode.outW
             pendingH = mode.outH
@@ -531,7 +554,7 @@ class CarLifeSession(
             csdPending = true
             lastVideoTx = SystemClock.elapsedRealtime()
         }
-        CarLifeState.status = "видео: мост"
+        CarLifeState.status = "video: bridge"
         bridge.onCarlifeStart()
         if (bannerText != null) startOrUpdatePlaceholder()
     }
@@ -1043,7 +1066,7 @@ class CarLifeSession(
 
     override fun onError(msg: String, t: Throwable?) {
         AppLog.e(msg, t)
-        CarLifeState.status = "ОШИБКА: $msg: ${t?.message}"
+        CarLifeState.status = "ERROR: $msg: ${t?.message}"
     }
 
     // ---------------- таймер ----------------
@@ -1063,12 +1086,28 @@ class CarLifeSession(
     //   Wi-Fi Direct; переживали только паузы до 25 с. Baidu на паузе шлёт именно VIDEO_HEARTBEAT (Recorder:906-926),
     //   ставим его раз в 100 мс, по USB у Desay остаётся VIDEO_DATA.
     /**
-     * ГУ, которым на PAUSE нужен VIDEO_HEARTBEAT раз в 100 мс: VW 20082120/20082122 (h93, h222), VW BT 1420 по воздуху
-     * (Павел 2026-10-18: без keepalive на PAUSE ГУ закрыла сокет через ~1 мин, с пустым VIDEO_DATA рвала на START)
-     * и Desay G6S по воздуху (h211).
+     * ГУ, которым на PAUSE нужен VIDEO_HEARTBEAT раз в 100 мс: VW 20082120/20082122/20082114/20082130/20082134
+     * (h93, h222, h425, h97), VW BT 1420 по воздуху (Павел 2026-10-18) и Desay G6S по воздуху (h211).
+     * Плюс выученные каналы: ГУ, которое уже оборвало связь на паузе с пустым VIDEO_DATA, в следующий раз
+     * получает heartbeat без правки кода (см. [PauseKeepalivePolicy]).
      */
     private val pauseHeartbeatHu: Boolean
-        get() = bridge.huVw20082120 || (air && (bridge.huVwBt1420 || bridge.huDesayG6S))
+        get() = PauseKeepalivePolicy.needsHeartbeat(
+            knownVw = bridge.huVw20082120,
+            air = air,
+            vwBt1420 = bridge.huVwBt1420,
+            desayG6S = bridge.huDesayG6S,
+            learned = pauseLearnKey?.let { bridge.pauseMemory?.pauseHeartbeatLearned(it) } == true,
+        )
+
+    /** Сессия закрылась на паузе, heartbeat не слали, это не «Стоп»: канал стоит запомнить. */
+    fun shouldLearnPause(userStop: Boolean): Boolean = PauseKeepalivePolicy.shouldLearn(
+        closedWhilePausedMs = closedWhilePausedMs,
+        usedHeartbeat = pauseUsedHeartbeatAtClose,
+        userStop = userStop,
+        channel = pauseLearnKeyAtClose,
+        desayUsb = bridge.huDesayG6S && !air,
+    )
 
     private fun pauseHeartbeat() {
         if (closed.get() || !paused || !PAUSE_KEEPALIVE_ENABLED) return
@@ -1087,7 +1126,7 @@ class CarLifeSession(
         checkThermal(now)
         if (transport.rxBytes == 0L && now - t0 > SILENCE_MS && (now - t0) % 10_000 < 1000) {
             AppLog.i("ГУ не прислало ни одного байта за ${(now - t0) / 1000} с (ждём HU_PROTOCOL_VERSION)")
-            CarLifeState.status = "ГУ молчит, байт от него нет"
+            CarLifeState.status = "head unit is silent, no bytes received"
         }
         if (now - lastStatsAt >= 5000 && (vFrames > 0 || vBeats > 0)) {
             AppLog.i("видео: отправлено кадров=$vFrames (ключевых=$vKeys) байт=$vBytes heartbeat=$vBeats сброшено=$vDropped очередь=${transport.queueSize(Ch.VIDEO)} (+${vFrames - lastStatsFrames} за ${(now - lastStatsAt) / 1000}с)")

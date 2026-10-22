@@ -218,7 +218,7 @@ class BridgeService : Service() {
                 val pfd = DebugTransport.connect(dbgPort)
                 main.post {
                     if (pfd == null) {
-                        CarLifeState.status = "debug TCP: нет соединения"
+                        CarLifeState.status = "debug TCP: no connection"
                         failStart()
                     } else if (session != null) {
                         pfd.close()
@@ -261,13 +261,13 @@ class BridgeService : Service() {
         val acc = usb.accessoryList?.firstOrNull()
         if (acc == null) {
             AppLog.i("сервис: аксессуара нет, останавливаюсь")
-            CarLifeState.status = "аксессуара нет"
+            CarLifeState.status = "no accessory"
             failStart()
             return START_NOT_STICKY
         }
         if (!usb.hasPermission(acc)) {
             AppLog.i("сервис: нет разрешения на аксессуар, останавливаюсь")
-            CarLifeState.status = "нет разрешения на аксессуар"
+            CarLifeState.status = "no permission for accessory"
             failStart()
             return START_NOT_STICKY
         }
@@ -279,7 +279,7 @@ class BridgeService : Service() {
         }
         if (pfd == null) {
             AppLog.i("сервис: openAccessory вернул null")
-            CarLifeState.status = "openAccessory: ошибка"
+            CarLifeState.status = "openAccessory: error"
             failStart()
             return START_NOT_STICKY
         }
@@ -689,7 +689,7 @@ class BridgeService : Service() {
         sixReady = false
         WLog.begin(kind, "bind" to bind, "ACCESS_LOCAL_NETWORK" to NetProbe.localNetworkGranted(this))
         AppLog.i("сервис: $kind, слушаю 6 портов на $bind, жду ГУ ${waitMs / 1000} с")
-        CarLifeState.status = "$kind: жду ГУ"
+        CarLifeState.status = "$kind: waiting for head unit"
         val waitStart = SystemClock.elapsedRealtime()
         Thread({
             var hotspotPeer = false      // 6/6 собрала не P2P-группа ГУ, а подсеть маяка
@@ -758,7 +758,7 @@ class BridgeService : Service() {
                             CarLifeState.wireless = getString(R.string.wl_state_gave_up, (WIFI_B_WAIT_MS / 60_000).toInt())
                         }
                         // отмена ожидания кабелем: статус уже USB-сессии, не перетираем
-                        if (session == null) CarLifeState.status = msg ?: "$kind: ошибка"
+                        if (session == null) CarLifeState.status = msg ?: "$kind: error"
                         failStart()
                     }
                 }
@@ -803,7 +803,7 @@ class BridgeService : Service() {
             if (h == null) {
                 // нет сертификата head unit или мост не собрался: причина уже в AaState.setupError, USB-сессию не открываем
                 transport.close()
-                CarLifeState.status = AaState.setupError ?: "мост не стартовал"
+                CarLifeState.status = AaState.setupError ?: "bridge did not start"
                 failStart()
                 return
             }
@@ -840,11 +840,12 @@ class BridgeService : Service() {
             AaState.setupError = null
             AaState.reset()
             AaState.cert = loaded.creds.certSet + if (loaded.error != null) " (ОТКАТ с ${loaded.requested})" else ""
-            AaState.status = "мост: старт"
+            AaState.status = "bridge: starting"
             val log = { line: String, ui: Boolean -> AppLog.i(line, ui) }
             val core = AaBridgeCore(log, clockUs = { SystemClock.elapsedRealtimeNanos() / 1_000 })
             core.micModeProvider = { aaPrefs.micMode }
             core.musicRateProvider = { aaPrefs.musicRate }
+            core.pauseMemory = aaPrefs          // выученные на PAUSE настройки ГУ переживают перезапуск
             core.phoneMic = PhoneMicCapture(applicationContext)
             core.usbAudioEnabled = aaPrefs.usbAudio
             EqLive.settings = aaPrefs.eq
@@ -874,12 +875,12 @@ class BridgeService : Service() {
         } catch (e: AaCertsMissingException) {
             AppLog.e("BRIDGE не стартовал: нет сертификата head unit", e)
             AaState.setupError = e.message
-            AaState.status = "ошибка: нет сертификата"
+            AaState.status = "error: no certificate"
             null
         } catch (e: Throwable) {
             AppLog.e("BRIDGE не стартовал (сертификаты AA)", e)
             AaState.setupError = getString(R.string.svc_bridge_failed, "${e.javaClass.simpleName}: ${e.message}")
-            AaState.status = "ошибка: мост не стартовал"
+            AaState.status = "error: bridge did not start"
             null
         }
     }
@@ -956,6 +957,14 @@ class BridgeService : Service() {
         AppLog.i("сервис: сессия завершена ($reason)")
         if (session !== s) return
         session = null
+        // ГУ оборвало связь на паузе, а heartbeat не слали: запоминаем канал, в следующий раз держим heartbeat
+        if (s.shouldLearnPause(stopRequested)) {
+            val key = s.pauseLearnKeyAtClose
+            if (key != null) {
+                AaPrefs(this).learnPauseHeartbeat(key)
+                AppLog.i("сервис: ГУ $key рвало связь на паузе ${s.closedWhilePausedMs} мс - запомнил VIDEO_HEARTBEAT для следующих сессий", true)
+            }
+        }
         markCarSeen()
         CarLifeState.wirelessSession = false
         if (wifiBMode && autoStarted && !autoMode && !stopRequested) {

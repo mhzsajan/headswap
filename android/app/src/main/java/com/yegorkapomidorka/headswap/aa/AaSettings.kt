@@ -3,12 +3,13 @@ package com.yegorkapomidorka.headswap.aa
 import android.content.Context
 import android.content.SharedPreferences
 import com.yegorkapomidorka.headswap.AppLog
+import com.yegorkapomidorka.headswap.PauseMemory
 import java.io.FileNotFoundException
 import java.io.InputStream
 import java.util.concurrent.atomic.AtomicLong
 
 /** Настройки AA-режима (отдельный файл prefs). */
-class AaPrefs(ctx: Context) {
+class AaPrefs(ctx: Context) : PauseMemory {
     private val sp: SharedPreferences = ctx.getSharedPreferences("aa", Context.MODE_PRIVATE)
 
     /** jvc (по умолчанию, принят AA 17.7 живьём) или hur. */
@@ -173,9 +174,23 @@ class AaPrefs(ctx: Context) {
             sp.edit().putString("eqCustomBands", n.bandsCsv()).putInt("eqCustomPreamp", n.preamp).apply()
         }
 
+    // ---------------- выученный PAUSE ----------------
+
+    /** Каналу уже нужен VIDEO_HEARTBEAT на паузе (ключ "канал/транспорт", см. PauseKeepalivePolicy). */
+    override fun pauseHeartbeatLearned(key: String): Boolean =
+        sp.getStringSet(KEY_PAUSE_HEARTBEAT, emptySet())?.contains(key) == true
+
+    /** Запомнить канал, который оборвался на паузе с пустым VIDEO_DATA: дальше шлём heartbeat. */
+    override fun learnPauseHeartbeat(key: String) {
+        // getStringSet отдаёт сам набор из prefs: копируем, иначе правим чужой объект без commit
+        val cur = sp.getStringSet(KEY_PAUSE_HEARTBEAT, emptySet())?.toMutableSet() ?: mutableSetOf()
+        if (cur.add(key)) sp.edit().putStringSet(KEY_PAUSE_HEARTBEAT, cur).apply()
+    }
+
     companion object {
         const val DEFAULT_CUSTOM_W = 1920
         const val DEFAULT_CUSTOM_H = 720
+        const val KEY_PAUSE_HEARTBEAT = "pauseHeartbeatLearned"
     }
 }
 
@@ -187,7 +202,7 @@ val CAR_MAKES = listOf(
 
 /** Состояние AA-режима для экрана; пишет сервис, читает activity (один процесс). */
 object AaState {
-    @Volatile var status: String = "не запущено"
+    @Volatile var status: String = "not started"
     @Volatile var running: Boolean = false
     @Volatile var cert: String = "-"
     val frames = AtomicLong(0)
@@ -211,7 +226,7 @@ object AaState {
     }
 
     fun summary(): String =
-        "AA: $status\nAA cert: $cert  selftest: $selftest\nAA кадров: ${frames.get()} (config $codecConfigs, ${bytes / 1024} КиБ)\nМОСТ: в CarLife отправлено $bridgeSent, отброшено $bridgeDropped, звук ${audioBytes / 1024} КиБ"
+        "AA: $status\nAA cert: $cert  selftest: $selftest\nAA frames: ${frames.get()} (config $codecConfigs, ${bytes / 1024} KiB)\nBRIDGE: sent to CarLife $bridgeSent, dropped $bridgeDropped, audio ${audioBytes / 1024} KiB"
 }
 
 /** Ни один набор сертификата head unit не найден в assets. */
@@ -219,7 +234,7 @@ class AaCertsMissingException(message: String) : Exception(message)
 
 /** Загрузка сертификатов из assets с откатом на второй набор и крупным логом отката. */
 object AaCreds {
-    const val MISSING_TEXT = "Нет сертификата head unit: положите cert.pem и key.pem в app/src/main/assets/aa/jvc/ (см. README)"
+    const val MISSING_TEXT = "No head unit certificate: put cert.pem and key.pem into app/src/main/assets/aa/jvc/ (see README)"
 
     /** @throws AaCertsMissingException если файлов сертификата нет ни в одном наборе */
     fun load(ctx: Context, preferred: String): AapCerts.Loaded {
