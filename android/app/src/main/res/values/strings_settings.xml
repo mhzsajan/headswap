@@ -114,7 +114,7 @@
     <string name="apps_hint_text">Check the “Unknown sources” checkbox in Android Auto and that “Car make” is set to “No make”: with a make selected, Android Auto hides video apps. Then restart the head unit server. After an Android Auto update the apps sometimes disappear — that is on Google’s side.</string>
     <string name="set_mode">Mode</string>
     <string name="set_help">Help</string>
-    <string name="set_sum_appearance">Language: %1$s · theme: %2$s</string>
+    <string name="set_sum_appearance">Theme: %1$s</string>
     <string name="set_sum_mic">microphone: %1$s</string>
     <string name="set_sum_headunit">Certificate %1$s · auto-start %2$s</string>
     <string name="set_sum_on">on</string>

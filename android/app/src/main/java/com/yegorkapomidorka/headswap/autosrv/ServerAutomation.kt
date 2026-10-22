@@ -55,7 +55,7 @@ class ServerAutomation(
 
     private fun done(r: AutoResult, detail: String): AutoOutcome {
         val o = AutoOutcome(r, detail, ui.now() - t0)
-        log("итог: $o")
+        log("result: $o")
         return o
     }
 
@@ -91,15 +91,15 @@ class ServerAutomation(
         return Pair(t.any { AutoServerText.isStop(it) }, t.any { AutoServerText.isStart(it) })
     }
 
-    /** Нажать «Ещё» и дождаться пунктов сервера. null = меню не открылось (или без нужных пунктов). */
+    /** Нажать «Ещё» и дождаться пунктов сервера. null = the menu did not open (или без нужных пунктов). */
     private fun openMenu(step: String): Pair<Boolean, Boolean>? {
         for (attempt in 1..2) {
             if (!waitUntil(menuTimeoutMs) { guard(); ui.clickMore() }) {
-                log("$step: кнопка «Ещё» не найдена (попытка $attempt)")
-                log("дамп: " + ui.dump())
+                log("$step: the «More» button was not found (attempt $attempt)")
+                log("dump: " + ui.dump())
                 continue
             }
-            log("$step: нажала «Ещё» (попытка $attempt)")
+            log("$step: tapped «More» (attempt $attempt)")
             var found: Pair<Boolean, Boolean>? = null
             waitUntil(menuTimeoutMs) {
                 guard()
@@ -109,11 +109,11 @@ class ServerAutomation(
             }
             val f = found
             if (f != null) {
-                log("$step: меню открыто: Остановить=${f.first} Запустить=${f.second}")
+                log("$step: menu open: Stop=${f.first} Start=${f.second}")
                 return f
             }
-            log("$step: в меню нет пунктов сервера (попытка $attempt); тексты: ${ui.texts().take(20)}")
-            log("дамп: " + ui.dump())
+            log("$step: no server items in the menu (attempt $attempt); texts: ${ui.texts().take(20)}")
+            log("dump: " + ui.dump())
             guardedBack()
             ui.sleep(400)
         }
@@ -124,7 +124,7 @@ class ServerAutomation(
     private fun reopenAa(): Boolean {
         if (!ui.openAaSettings()) return false
         if (!waitUntil(pageTimeoutMs) { ui.aaVisible() }) return false
-        log("окно AA снова на экране")
+        log("the AA window is on screen again")
         guard()
         ui.sleep(300)
         return true
@@ -134,60 +134,60 @@ class ServerAutomation(
         runScenario()
     } catch (_: ConsentScreen) {
         // без back и returnToApp: диалог должен остаться на экране, пока пользователь не пройдёт настройку
-        log("дамп: " + ui.dump())
-        done(AutoResult.CONSENT, "на телефоне экран настройки Android Auto (согласие/разрешения), жду пользователя")
+        log("dump: " + ui.dump())
+        done(AutoResult.CONSENT, "the phone shows the Android Auto setup screen (consent/permissions), waiting for the user")
     }
 
     private fun runScenario(): AutoOutcome {
         val (ready, why) = ui.prepareScreen()
-        log("экран: $why")
+        log("screen: $why")
         if (!ready) return done(AutoResult.LOCKED, why)
 
-        if (!ui.openAaSettings()) return done(AutoResult.ERROR, "система не дала открыть настройки AA")
-        log("настройки AA запущены, жду окно")
+        if (!ui.openAaSettings()) return done(AutoResult.ERROR, "the system did not allow opening AA settings")
+        log("AA settings started, waiting for the window")
         if (!waitUntil(pageTimeoutMs) { ui.aaVisible() }) {
             val (stillReady, why2) = ui.prepareScreen()
             return if (!stillReady) done(AutoResult.LOCKED, why2)
-            else done(AutoResult.NOT_FOUND, "окно Android Auto не появилось за ${pageTimeoutMs} мс (блок фонового запуска?)")
+            else done(AutoResult.NOT_FOUND, "the Android Auto window did not appear within ${pageTimeoutMs} ms (background start blocked?)")
         }
-        log("окно AA на экране")
+        log("the AA window is on screen")
         guard()
         ui.sleep(300)                     // тулбар дорисовывается после появления окна
 
-        var items = openMenu("шаг 1") ?: return done(AutoResult.NOT_FOUND, "меню сервера ГУ не открылось")
+        var items = openMenu("step 1") ?: return done(AutoResult.NOT_FOUND, "the head unit server menu did not open")
         if (items.first) {
-            if (!guardedClick { AutoServerText.isStop(it) }) return done(AutoResult.ERROR, "пункт «Остановить…» не нажался")
-            log("шаг 2: нажала «Остановить сервер головного устройства»")
+            if (!guardedClick { AutoServerText.isStop(it) }) return done(AutoResult.ERROR, "the «Stop…» item did not respond")
+            log("step 2: tapped «Stop head unit server»")
             ui.sleep(700)
             var started = false
             var reopened = false
             for (attempt in 1..5) {
-                var next = openMenu("шаг 3.$attempt")
+                var next = openMenu("step 3.$attempt")
                 if (next == null && !reopened) {
                     // OnePlus/AA 2026-10: после «Остановить» окно настроек AA закрывается (дамп пустой), «Ещё» искать негде
                     reopened = true
-                    log("шаг 3.$attempt: окна AA нет после «Остановить» (видно=${ui.aaVisible()}), открываю настройки заново")
-                    if (!reopenAa()) return done(AutoResult.NOT_FOUND, "после «Остановить» окно AA пропало и заново не открылось")
-                    next = openMenu("шаг 3.$attempt (заново)")
+                    log("step 3.$attempt: no AA window after «Stop» (visible=${ui.aaVisible()}), reopening settings")
+                    if (!reopenAa()) return done(AutoResult.NOT_FOUND, "after «Stop» the AA window disappeared and did not reopen")
+                    next = openMenu("step 3.$attempt (reopen)")
                 }
-                items = next ?: return done(AutoResult.NOT_FOUND, "после «Остановить» меню не открылось")
+                items = next ?: return done(AutoResult.NOT_FOUND, "after «Stop» the menu did not open")
                 if (items.second) {
-                    if (!guardedClick { AutoServerText.isStart(it) }) return done(AutoResult.ERROR, "пункт «Запустить…» не нажался")
-                    log("шаг 4: нажала «Запустить сервер головного устройства»")
+                    if (!guardedClick { AutoServerText.isStart(it) }) return done(AutoResult.ERROR, "the «Start…» item did not respond")
+                    log("step 4: tapped «Start head unit server»")
                     started = true
                     break
                 }
-                log("шаг 3.$attempt: «Запустить» ещё нет (сервер останавливается), закрываю меню и жду")
+                log("step 3.$attempt: «Start» is not there yet (the server is stopping), closing the menu and waiting")
                 guardedBack()
                 ui.sleep(800)
             }
-            if (!started) return done(AutoResult.TIMEOUT, "после «Остановить» пункт «Запустить» не появился")
+            if (!started) return done(AutoResult.TIMEOUT, "after «Stop» the «Start» item did not appear")
         } else if (items.second) {
-            if (!guardedClick { AutoServerText.isStart(it) }) return done(AutoResult.ERROR, "пункт «Запустить…» не нажался")
-            log("шаг 2: сервер был остановлен, нажала «Запустить сервер головного устройства»")
+            if (!guardedClick { AutoServerText.isStart(it) }) return done(AutoResult.ERROR, "the «Start…» item did not respond")
+            log("step 2: the server was stopped, tapped «Start head unit server»")
         } else {
             guardedBack()
-            return done(AutoResult.NOT_FOUND, "в меню нет ни «Остановить», ни «Запустить»")
+            return done(AutoResult.NOT_FOUND, "the menu has neither «Stop» nor «Start»")
         }
 
         ui.sleep(settleAfterStartMs)
@@ -197,30 +197,30 @@ class ServerAutomation(
         var verified = false
         var startAgain = false
         for (attempt in 1..2) {
-            val v = openMenu("проверка.$attempt")
+            val v = openMenu("verify.$attempt")
             if (v == null) {
-                log("проверка.$attempt: меню не открылось")
+                log("verify.$attempt: the menu did not open")
                 break
             }
             if (v.first) {
                 verified = true
                 startAgain = false
-                log("проверка.$attempt: в меню «Остановить…» (сервер запущен)")
+                log("verify.$attempt: the menu shows «Stop…» (the server is running)")
                 guardedBack()
                 ui.sleep(300)
                 break
             }
             startAgain = true
-            log("проверка.$attempt: в меню снова «Запустить…»: сервер не запустился, нажимаю ещё раз")
+            log("verify.$attempt: the menu shows «Start…» again: the server did not start, tapping once more")
             if (!guardedClick { AutoServerText.isStart(it) }) break
             ui.sleep(settleAfterStartMs)
         }
         guard()
         ui.returnToApp()
         return when {
-            verified -> done(AutoResult.OK, "сервер запущен, подтверждено меню")
-            startAgain -> done(AutoResult.ERROR, "после «Запустить» меню снова предлагает «Запустить»")
-            else -> done(AutoResult.OK, "«Запустить» нажато, подтвердить меню не удалось")
+            verified -> done(AutoResult.OK, "server started, confirmed by the menu")
+            startAgain -> done(AutoResult.ERROR, "after «Start» the menu offers «Start» again")
+            else -> done(AutoResult.OK, "«Start» tapped, could not confirm via the menu")
         }
     }
 }

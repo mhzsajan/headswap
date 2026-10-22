@@ -39,8 +39,8 @@ object Actions {
         val list = usb.accessoryList
         if (list == null || list.isEmpty()) {
             AppLog.i("аксессуар не найден (getAccessoryList=${if (list == null) "null" else "[]"})")
-            CarLifeState.accessory = "не найден"
-            CarLifeState.status = "ждём аксессуар"
+            CarLifeState.accessory = "not found"
+            CarLifeState.status = "waiting for accessory"
             return
         }
         for ((i, acc) in list.withIndex()) {

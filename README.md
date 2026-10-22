@@ -1,43 +1,55 @@
 # Headswap — Android Auto on CarLife head units
 
-**English.** Headswap is an Android app that runs Android Auto on head units that only support Baidu CarLife 2.0 over USB (common on Chinese-market cars). The phone talks to Android Auto's "head unit server" on 127.0.0.1:5277 as if it were a head unit, re-encodes the 1280x720 video, and presents itself to the car as a CarLife phone over USB (AOA). Touch is mapped 1:1, audio and microphone go over USB. No dongles. Verified on a 2024 Honda Vezel. Unofficial, not affiliated with Google, Baidu or Honda. GPL-3.0.
+Headswap runs **Android Auto** on head units that only support **Baidu CarLife 2.0** over USB — common on Chinese-market cars. The phone talks to Android Auto's "head unit server" on `127.0.0.1:5277` as if it were a head unit, re-encodes the video, and presents itself to the car as a CarLife phone over USB (AOA). Touch is mapped 1:1; audio and microphone go over USB. No dongles.
 
-![Android Auto на штатной ГУ Honda Vezel](docs/screenshot.jpg)
+This is the **`mhzsajan/headswap` fork**, focused on connection reliability and an English-only interface. It is based on the upstream project by Yegor ([`YegorkaPomidorka/headswap`](https://github.com/YegorkaPomidorka/headswap)). Unofficial; not affiliated with Google, Baidu, or Honda. GPL-3.0.
 
-## Что это и зачем
+![Android Auto on a factory Honda Vezel head unit](docs/screenshot.jpg)
 
-На многих машинах китайского рынка в штатной ГУ есть только Baidu CarLife, а Android Auto нет. Обычно это лечат донглами или заменой ГУ. Headswap обходится без них: приложение на самом телефоне делает Android Auto «головным устройством» для самого себя и перекладывает картинку и управление в CarLife, который ГУ понимает.
+## What this fork changes
 
-## Как работает
+Version **2.5.0-reliability1** (`versionCode 60`):
+
+- **Self-learning pause keepalive.** Some head units stop sending CarLife heartbeats while Android Auto is paused (for example during a phone call or a voice prompt). The bridge now learns, per head-unit channel and transport (`/usb` or `/air`), whether a pause needs its own keepalive. It learns after one failed pause, persists the result, and never learns this for Desay G6S over USB. No hardcoded per-car whitelist.
+- **Upstream reliability fixes merged:**
+  - VW CNS3 `20082130`: heartbeat on PAUSE.
+  - VW CNS2 Delphi `20082114`: PAUSE heartbeat and VR `MIC_DATA` reassembly.
+  - Wi-Fi Direct: better peer logging, reset, and loose peer matching.
+  - P2P rejoin and Desay G6S air heartbeat.
+- **English-only UI.** The Russian locale and the in-app language picker were removed. Status text, notifications, onboarding, settings, and the shared diagnostic report are English.
+
+The bridge still accepts the same cars and head units as upstream. If a unit worked before, it should keep working; the new pause logic only adds a fallback.
+
+## How it works
 
 ```
-телефон:  Android Auto  <->  Headswap  <->  USB (AOA, CarLife 2.0)  <->  ГУ с CarLife
-          (сервер ГУ,         (мост)
-           127.0.0.1:5277)
+phone:  Android Auto  <->  Headswap  <->  USB (AOA, CarLife 2.0)  <->  head unit with CarLife
+        (head unit server,   (bridge)
+         127.0.0.1:5277)
 ```
 
-- Приложение подключается к «серверу головного устройства» Android Auto (режим разработчика AA) по TCP как head unit: версия, TLS, сервисы, видео H.264 1280x720.
-- Для ГУ оно выступает телефоном CarLife: переключается в USB-аксессуар (AOA), проходит рукопожатие CarLife 2.0 и отдаёт видео в канал VIDEO.
-- Видео перекодируется, кадр повторяется каждые 100 мс. Без этого ГУ рвёт USB на статичном экране.
-- Касания идут 1:1: координаты ГУ пересчитываются в кадр 1280x720 и уходят в AA как тач-события.
-- Звук AA и микрофон машины идут по USB (каналы CarLife), не по Bluetooth.
-- Сервер ГУ в Android Auto запускается автоматически службой спецвозможностей: приложение само открывает настройки AA и нажимает нужный пункт меню.
+- Headswap connects to Android Auto's head-unit server (AA developer mode) over TCP as a head unit: version, TLS, services, H.264 video.
+- To the car it looks like a CarLife phone: it switches into USB accessory mode (AOA), completes the CarLife 2.0 handshake, and sends video on the VIDEO channel.
+- Video is re-encoded and a frame is repeated every 100 ms. Without this, some head units drop USB on a static screen.
+- Touches are 1:1: head-unit coordinates are converted to the video frame and sent to AA as touch events.
+- AA audio and the car microphone go over USB (CarLife channels), not Bluetooth.
+- The AA head-unit server is started automatically by an accessibility service: the app opens AA settings and taps the required menu item.
 
-## Совместимость
+## Compatibility
 
-Подтверждённые автомобили (штатные ГУ с Baidu CarLife, все для рынка Китая):
+Confirmed cars (factory head units with Baidu CarLife, all China-market):
 
-| Машина | Baidu CarLife |
+| Car | Baidu CarLife |
 | --- | --- |
 | Dongfeng Peugeot 5008 2024 | — |
-| Honda Breeze, 2 поколение | — |
-| Honda CR-V, 6 поколение, дорестайл | — |
+| Honda Breeze, 2nd generation | — |
+| Honda CR-V, 6th generation, pre-facelift | — |
 | Honda CR-V 2026 1.5T | 2.0 |
-| Honda CR-V 2026 гибрид (работает с оговорками) | — |
+| Honda CR-V 2026 hybrid (works with caveats) | — |
 | Honda Vezel 2022–2024 (GAC Honda) | 2.0 |
-| Hyundai Elantra, 7 поколение, дорестайл | — |
+| Hyundai Elantra, 7th generation, pre-facelift | — |
 | Hyundai ix35 2021 | — |
-| Jetta VS5/VS7 (только с Baidu CarLife, версия с J-Link не поддерживается) | 2.0 |
+| Jetta VS5/VS7 (Baidu CarLife only; the J-Link version is not supported) | 2.0 |
 | Kia K3 2023 | — |
 | Kia Sportage Ace | — |
 | Mazda CX-5 2025–2026 | 2.0 |
@@ -47,88 +59,105 @@
 | Skoda Octavia Pro | 2.0 |
 | Toyota Corolla Cross 2024–2025 | 2.0 |
 | Toyota Levin | — |
-| Volkswagen Golf 8, комплектация Pro, 2021 | — |
+| Volkswagen Golf 8, Pro trim, 2021 | — |
 | Volkswagen ID.Unyx | — |
 | Volkswagen Lamando L | — |
-| Volkswagen Sagitar 2021–2022, дорестайл | 2.0 |
-| Volkswagen T-Roc рестайлинг 2026 | — |
+| Volkswagen Sagitar 2021–2022, pre-facelift | 2.0 |
+| Volkswagen T-Roc facelift 2026 | — |
 | Volkswagen Tharu XR 2025–2026 | 2.1 |
 | Volkswagen Tiguan L Pro / Teramont Pro | — |
 
-Актуальный список — на [странице проекта](https://yegorkapomidorka.com/headswap/).
+The upstream list is maintained at [yegorkapomidorka.com/headswap](https://yegorkapomidorka.com/headswap/). Reports for other cars are welcome. Minimum Android version: **10 (API 29)**.
 
-Отчёты о других машинах приветствуются (Telegram и 4PDA ниже). Минимальная версия Android: 10 (API 29).
+## Install (users)
 
-## Установка (для пользователей)
+1. Download the APK from the [Releases page of this fork](https://github.com/mhzsajan/headswap/releases).
+2. In Android Auto, enable developer mode (Settings → tap **Version** 10 times), then open the three-dot menu → **Start head unit server**.
+3. In Android Settings → Accessibility, enable the **Headswap** service. It is needed to start the head-unit server automatically. If the item is greyed out: Settings → Apps → Headswap → **Allow restricted settings**.
+4. Unlock the phone and connect it to the head unit over USB.
 
-1. Скачайте APK: https://yegorkapomidorka.com/headswap/
-2. В Android Auto включите режим разработчика (Настройки -> 10 тапов по «Версия») и в меню «три точки» пункт «Сервер головного устройства» (Start head unit server).
-3. В настройках Android -> Спецвозможности включите службу Headswap. Она нужна для автозапуска сервера ГУ. Если пункт серый: Настройки -> Приложения -> Headswap -> «Разрешить ограниченные настройки».
-4. Разблокируйте телефон и подключите его к ГУ по USB.
+> This fork is signed with a different key than the upstream app. If upstream Headswap is already installed, uninstall it first; Android will not update across signatures. Uninstalling removes the app's saved settings.
 
-Обновления: в версиях новее 1.1.10 Headswap сам находит новую версию в [релизах на GitHub](https://github.com/YegorkaPomidorka/headswap/releases) и ставит её поверх старой, настройки сохраняются. Отключается в Настройках → Обновления. При первом обновлении Android попросит разрешить установку приложений из Headswap.
+Updates: Headswap checks the upstream GitHub releases and can install a newer upstream build over this one only if the signing key matches. For this fork, install a newer APK from this fork's Releases page.
 
-## Сборка из исходников
+## Build from source
 
-Нужен JDK 17.
+JDK 17 or newer is required.
 
-```
+```bash
 cd android
 ./gradlew assembleDebug
 ```
 
-Release-подпись читается из `~/.android-keys/headswap-release.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Без этого файла собирается только debug.
+On Windows without a working Gradle wrapper download, use a locally installed Gradle:
 
-### Сертификат head unit
-
-Приложение не содержит сертификат в репозитории. Android Auto принимает от head unit только сертификат, подписанный Google Automotive Link. Публичные сертификат и ключ, которые используются в открытых проектах, лежат в:
-
-- [opencardev/aasdk](https://github.com/opencardev/aasdk) (продолжение [f1xpl/aasdk](https://github.com/f1xpl/aasdk)): JVC Kenwood, `src/Messenger/Cryptor.cpp` (строки 253-299), он же в `cert/headunit.crt` и `cert/headunit.key`;
-- [andreknieriem/headunit-revived](https://github.com/andreknieriem/headunit-revived): `app/src/main/res/raw/cert` и `privkey`.
-
-Положите PEM-файлы так:
-
+```powershell
+$env:JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot"
+$env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
+cd android
+gradle :app:assembleDebug
 ```
+
+The release signing config is read from `~/.android-keys/headswap-release.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Without that file only a debug build is produced. Never commit the keystore or its passwords.
+
+Unit tests:
+
+```bash
+cd android
+./gradlew :app:testDebugUnitTest
+```
+
+### Head unit certificate
+
+The repository does not contain a head unit certificate. Android Auto only accepts a certificate signed by Google Automotive Link. Public certificate/key pairs used by open projects live in:
+
+- [opencardev/aasdk](https://github.com/opencardev/aasdk) (continuation of [f1xpl/aasdk](https://github.com/f1xpl/aasdk)): JVC Kenwood, `src/Messenger/Cryptor.cpp` (lines 253–299), also `cert/headunit.crt` and `cert/headunit.key`;
+- [andreknieriem/headunit-revived](https://github.com/andreknieriem/headunit-revived): `app/src/main/res/raw/cert` and `privkey`.
+
+Place the PEM files here:
+
+```text
 android/app/src/main/assets/aa/jvc/cert.pem
 android/app/src/main/assets/aa/jvc/key.pem
 ```
 
-и/или (набор из headunit-revived)
+and/or (the headunit-revived set):
 
-```
+```text
 android/app/src/main/assets/aa/hur/cert.pem
 android/app/src/main/assets/aa/hur/key.pem
 ```
 
-Для эмулятора на ПК то же самое в `pc-headunit/certs/jvc/` (и `hur/`). `*.pem` и `*.key` в `.gitignore`.
+For the PC emulator, the same layout goes in `pc-headunit/certs/jvc/` (and `hur/`). `*.pem` and `*.key` are git-ignored.
 
-## Структура репозитория
+## Repository layout
 
-- `android/`: приложение (Kotlin, пакет `com.yegorkapomidorka.headswap`): мост AA <-> CarLife (`BridgeService`, `CarLifeSession`, `CarLifeState`, `AppLog`), клиент AA (`aa/`), автозапуск сервера ГУ (`autosrv/`), интерфейс (`ui/`).
-- `pc-headunit/`: эмулятор ГУ Android Auto на Python для отладки на ПК, см. [pc-headunit/README.md](pc-headunit/README.md).
-- `docs/`: спецификации протоколов: [aa-headunit.md](docs/aa-headunit.md) (Android Auto со стороны ГУ), [carlife-protocol.md](docs/carlife-protocol.md) (CarLife по AOA), [carlife-v2-handshake.md](docs/carlife-v2-handshake.md) (рукопожатие CarLife 2.0).
+- `android/`: the app (Kotlin, package `com.yegorkapomidorka.headswap`): the AA ↔ CarLife bridge (`BridgeService`, `CarLifeSession`, `CarLifeState`, `AppLog`), the AA client (`aa/`), head-unit server automation (`autosrv/`), and the UI (`ui/`).
+- `pc-headunit/`: a Python Android Auto head-unit emulator for debugging on a PC; see [pc-headunit/README.md](pc-headunit/README.md).
+- `docs/`: protocol specifications: [aa-headunit.md](docs/aa-headunit.md) (Android Auto from the head-unit side), [carlife-protocol.md](docs/carlife-protocol.md) (CarLife over AOA), [carlife-v2-handshake.md](docs/carlife-v2-handshake.md) (CarLife 2.0 handshake).
 
-## Ограничения
+## Limitations
 
-- Звонки только через Bluetooth HFP: по USB они не идут.
-- Для автозапуска сервера ГУ телефон должен быть разблокирован.
-- HyperOS запрещает `adb input`, поэтому часть отладочных приёмов недоступна.
-- Протокол CarLife 2.0 реализован ровно настолько, насколько его требует проверенная ГУ (без аутентификации и шифрования). ГУ, которые их требуют, не заработают.
-- Android Auto может в любой момент поменять поведение сервера ГУ: это недокументированный режим разработчика.
+- Calls work only over Bluetooth HFP; they do not go over USB.
+- The phone must be unlocked for the head-unit server auto-start.
+- HyperOS blocks `adb input`, so some debugging techniques are unavailable.
+- CarLife 2.0 is implemented only as far as the confirmed head units require (no authentication or encryption). Units that require them will not work.
+- Android Auto can change head-unit server behavior at any time: it is an undocumented developer mode.
 
-## Ссылки
+## Links
 
-- Сайт и APK: https://yegorkapomidorka.com/headswap/
-- Релизы на GitHub (те же APK, из них обновляется приложение): https://github.com/YegorkaPomidorka/headswap/releases
+- This fork: https://github.com/mhzsajan/headswap
+- Upstream project and APK: https://yegorkapomidorka.com/headswap/
+- Upstream releases: https://github.com/YegorkaPomidorka/headswap/releases
 - Telegram: https://t.me/headswap
-- Тема на 4PDA: https://4pda.to/forum/index.php?showtopic=1127415
+- 4PDA thread: https://4pda.to/forum/index.php?showtopic=1127415
 
-## Дисклеймер
+## Disclaimer
 
-Неофициальный проект. Не связан с Google, Baidu и Honda; Android Auto, CarLife и Honda являются товарными знаками их владельцев. Используйте на свой риск. Не отвлекайтесь за рулём.
+Unofficial project. Not affiliated with Google, Baidu, or Honda; Android Auto, CarLife, and Honda are trademarks of their owners. Use at your own risk. Do not interact with the app while driving.
 
-## Лицензия
+## License
 
-GNU GPL v3.0, см. [LICENSE](LICENSE). © 2026 Yegor (yegorkapomidorka).
+GNU GPL v3.0, see [LICENSE](LICENSE). © 2026 Yegor (yegorkapomidorka). Fork changes © 2026 the fork contributors.
 
-Исключение: `pc-headunit/proto/*.proto` основаны на определениях протокола из [headunit-revived](https://github.com/andreknieriem/headunit-revived) (AGPL-3.0). Всё остальное - GPL-3.0.
+Exception: `pc-headunit/proto/*.proto` is based on protocol definitions from [headunit-revived](https://github.com/andreknieriem/headunit-revived) (AGPL-3.0). Everything else is GPL-3.0.

@@ -82,7 +82,7 @@ class BridgeHost(
         }
         grace?.cancel(false)
         log("BRIDGE USB закрыт: держу AA тёплой ${graceMs} мс", true)
-        AaState.status = "мост: USB потерян, AA жива ${graceMs / 1000} с"
+        AaState.status = "bridge: USB lost, AA alive ${graceMs / 1000} s"
         grace = scheduler.schedule({ onGraceExpired() }, graceMs, TimeUnit.MILLISECONDS)
     }
 

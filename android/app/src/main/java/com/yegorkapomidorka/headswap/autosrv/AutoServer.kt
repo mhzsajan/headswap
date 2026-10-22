@@ -74,7 +74,7 @@ object AutoServer {
     fun start(trigger: Trigger): Run {
         current?.let {
             if (it.done.count > 0) {
-                log("уже идёт (${it.trigger.label}), присоединяюсь (${trigger.label})")
+                log("already running (${it.trigger.label}), joining (${trigger.label})")
                 return it
             }
         }
@@ -82,15 +82,15 @@ object AutoServer {
         current = run
         val svc = service
         if (svc == null) {
-            finish(run, AutoOutcome(AutoResult.SERVICE_OFF, "служба спецвозможностей не подключена", 0))
+            finish(run, AutoOutcome(AutoResult.SERVICE_OFF, "accessibility service is not connected", 0))
             return run
         }
-        log("запуск: ${trigger.label}")
+        log("start: ${trigger.label}")
         exec.execute {
             val outcome = try {
                 ServerAutomation(AccessibilityServerUi(svc), { log(it) }, onStarted = { run.started.countDown() }).restart()
             } catch (e: Throwable) {
-                AppLog.e("AUTOSRV сбой автоматизации", e)
+                AppLog.e("AUTOSRV automation failure", e)
                 AutoOutcome(AutoResult.ERROR, "${e.javaClass.simpleName}: ${e.message}", 0)
             }
             finish(run, outcome)
@@ -119,7 +119,7 @@ object AutoServer {
         val end = System.nanoTime() + waitMs * 1_000_000
         while (true) {
             run.outcome?.let { return it }
-            if (run.started.count == 0L) return AutoOutcome(AutoResult.OK, "сервер запущен, проверка продолжается", 0)
+            if (run.started.count == 0L) return AutoOutcome(AutoResult.OK, "server started, verification continues", 0)
             val left = (end - System.nanoTime()) / 1_000_000
             if (left <= 0) return null
             run.done.await(minOf(left, 50), TimeUnit.MILLISECONDS)
@@ -127,8 +127,8 @@ object AutoServer {
     }
 
     fun summary(ctx: Context): String {
-        val svc = if (isConnected) "служба подключена" else if (isListed(ctx)) "служба включена, но не подключена" else "служба спецвозможностей выключена"
+        val svc = if (isConnected) "service connected" else if (isListed(ctx)) "service enabled but not connected" else "accessibility service is off"
         val l = last
-        return "AUTOSRV: $svc" + if (l != null) "; последний: ${lastTrigger?.label} -> $l" else ""
+        return "AUTOSRV: $svc" + if (l != null) "; last: ${lastTrigger?.label} -> $l" else ""
     }
 }

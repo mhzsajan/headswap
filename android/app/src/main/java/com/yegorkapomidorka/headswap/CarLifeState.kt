@@ -5,7 +5,7 @@ import com.yegorkapomidorka.headswap.aa.VideoGeometry
 
 /** Состояние для экрана; пишут сервис и сессия, читает activity (один процесс). */
 object CarLifeState {
-    @Volatile var status: String = "не запущено"
+    @Volatile var status: String = "not started"
     @Volatile var accessory: String = "-"
     @Volatile var protocol: String = "-"
     @Volatile var auth: String = "-"
@@ -42,6 +42,6 @@ object CarLifeState {
     }
 
     fun summary(): String =
-        "статус: $status\nаксессуар: $accessory\nпротокол: $protocol\nauth: $auth\nвидео: $video\nтач: $touch" +
-            (wireless?.let { "\nбеспровод: $it" } ?: "")
+        "status: $status\naccessory: $accessory\nprotocol: $protocol\nauth: $auth\nvideo: $video\ntouch: $touch" +
+            (wireless?.let { "\nwireless: $it" } ?: "")
 }

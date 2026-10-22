@@ -23,7 +23,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
-import com.yegorkapomidorka.headswap.AppLocale
 import com.yegorkapomidorka.headswap.AppLog
 import com.yegorkapomidorka.headswap.AppTheme
 import com.yegorkapomidorka.headswap.BridgeService
@@ -98,12 +97,6 @@ enum class SettingsSection(val key: String, val titleRes: Int, val iconRes: Int)
         fun menu(): List<SettingsSection> = shown().filter { it != EQ }
     }
 }
-
-private val LANGS = listOf(
-    AppLocale.SYSTEM to R.string.lang_system,
-    "en" to R.string.lang_en,
-    "ru" to R.string.lang_ru,
-)
 
 private val THEMES = listOf(
     AppTheme.SYSTEM to R.string.theme_system,
@@ -230,9 +223,8 @@ class SettingsScreen(host: MainActivity) : Screen(host) {
             if (tv.text.toString() != text) tv.text = text
             tv.setTextColor(c.clr(color))
         }
-        val lang = c.getString(LANGS.firstOrNull { it.first == AppLocale.get(c) }?.second ?: R.string.lang_system)
         val theme = c.getString(THEMES.firstOrNull { it.first == AppTheme.get(c) }?.second ?: R.string.theme_system)
-        set(SettingsSection.APPEARANCE, c.getString(R.string.set_sum_appearance, lang, theme))
+        set(SettingsSection.APPEARANCE, c.getString(R.string.set_sum_appearance, theme))
 
         val mode = c.getString(if (aa.transcode) R.string.set_transcode_title else R.string.set_direct_title)
         val geo = aa.videoGeometry.effective(aa.transcode)
@@ -345,7 +337,6 @@ private class Segmented(val ctx: Context, private val labels: List<String>, sp: 
 /** Один раздел настроек (язык и тема, видео, звук, ГУ, обновления). */
 class SettingsSectionScreen(host: MainActivity, val section: SettingsSection) : Screen(host) {
     private val aa = AaPrefs(ctx)
-    private val langRows = LinkedHashMap<String, RadioRow>()
     private val themeRows = LinkedHashMap<String, RadioRow>()
     private val micRows = HashMap<MicMode, RadioRow>()
     private val rateRows = LinkedHashMap<MusicRate, RadioRow>()
@@ -636,18 +627,10 @@ class SettingsSectionScreen(host: MainActivity, val section: SettingsSection) : 
     private fun note(text: String, color: Int = R.color.on2): TextView =
         ctx.text(text, 13f, 400, ctx.clr(color)).also { body.addView(it, lp(WRAP, WRAP).margins(ctx, 8, 2, 8, 0)) }
 
-    // --- язык и тема ---
+    // --- theme ---
 
     private fun buildAppearance() {
         val c = ctx
-        body.addView(c.sectionTitle(c.getString(R.string.lang_title)))
-        for ((tag, titleRes) in LANGS) {
-            val row = RadioRow(c, c.getString(titleRes), "") { setLang(tag) }
-            langRows[tag] = row
-            body.addView(row.view, lp(MATCH, WRAP))
-        }
-        refreshLang()
-
         body.addView(c.sectionTitle(c.getString(R.string.theme_title)))
         for ((mode, titleRes) in THEMES) {
             val row = RadioRow(c, c.getString(titleRes), "") { setTheme(mode) }
@@ -655,18 +638,6 @@ class SettingsSectionScreen(host: MainActivity, val section: SettingsSection) : 
             body.addView(row.view, lp(MATCH, WRAP))
         }
         refreshTheme()
-    }
-
-    private fun setLang(tag: String) {
-        if (AppLocale.get(ctx) == tag) return
-        AppLocale.set(ctx, tag)
-        refreshLang()
-        if (AppLocale.needsRecreate) host.recreate()      // на 33+ activity пересоздаёт система
-    }
-
-    private fun refreshLang() {
-        val cur = AppLocale.get(ctx)
-        for ((tag, row) in langRows) row.setSelected(cur == tag)
     }
 
     private fun setTheme(mode: String) {

@@ -8,7 +8,7 @@ import org.junit.Test
 class HomeLogicTest {
     private fun inp(
         running: Boolean = false,
-        status: String = "не запущено",
+        status: String = "not started",
         protocol: Boolean = false,
         serverUp: Boolean = false,
         autoReady: Boolean = false,
@@ -47,12 +47,12 @@ class HomeLogicTest {
 
     @Test
     fun connectedFromBridgeStatus() {
-        val s = HomeLogic.compute(inp(running = true, status = "мост: AA -> CarLife (перекодирование)"))
+        val s = HomeLogic.compute(inp(running = true, status = "bridge: AA -> CarLife (transcoding)"))
         assertEquals(Phase.CONNECTED, s.phase)
         assertEquals(OutlineAction.STOP, s.outline)
         assertEquals(UiText.raw("USB"), s.stages[4].second.second)
         assertEquals(UiText.res(R.string.notif_video_usb), s.notifText)
-        val noAudio = HomeLogic.compute(inp(running = true, status = "мост: AA -> CarLife", usbAudio = false))
+        val noAudio = HomeLogic.compute(inp(running = true, status = "bridge: AA -> CarLife", usbAudio = false))
         assertEquals(StageState.PEND, noAudio.stages[4].second.first)
         assertEquals(UiText.res(R.string.notif_video), noAudio.notifText)
         assertEquals(HeroIcon.CAR_USB, s.icon)
@@ -60,21 +60,21 @@ class HomeLogicTest {
 
     @Test
     fun connectedOverWifiShowsWifi() {
-        val s = HomeLogic.compute(inp(running = true, status = "мост: AA -> CarLife (перекодирование)", wireless = true))
+        val s = HomeLogic.compute(inp(running = true, status = "bridge: AA -> CarLife (transcoding)", wireless = true))
         assertEquals(Phase.CONNECTED, s.phase)
         assertEquals(HeroIcon.CAR_WIFI, s.icon)
         assertEquals(UiText.res(R.string.home_sub_ok_wifi), s.sub)
         assertEquals(UiText.raw("CarLife 2.0 · Wi-Fi"), s.stages[1].second.second)
         assertEquals(UiText.raw("Wi-Fi"), s.stages[4].second.second)
         assertEquals(UiText.res(R.string.notif_video_wifi), s.notifText)
-        val noAudio = HomeLogic.compute(inp(running = true, status = "мост: AA -> CarLife", usbAudio = false, wireless = true))
+        val noAudio = HomeLogic.compute(inp(running = true, status = "bridge: AA -> CarLife", usbAudio = false, wireless = true))
         assertEquals(StageState.PEND, noAudio.stages[4].second.first)
         assertEquals(UiText.res(R.string.notif_video), noAudio.notifText)
     }
 
     @Test
     fun reconnectingShowsCountdown() {
-        val s = HomeLogic.compute(inp(running = true, status = "мост: USB потерян, AA жива 8 с", graceLeft = 5))
+        val s = HomeLogic.compute(inp(running = true, status = "bridge: USB lost, AA alive 8 s", graceLeft = 5))
         assertEquals(Phase.RECONNECTING, s.phase)
         assertEquals(5, s.graceLeftS)
         assertEquals(UiText.res(R.string.notif_reconnecting, 5), s.notifText)
@@ -83,7 +83,7 @@ class HomeLogicTest {
 
     @Test
     fun errorAfterLossWhenServiceStopped() {
-        val s = HomeLogic.compute(inp(lost = true, status = "мост: AA отключился"))
+        val s = HomeLogic.compute(inp(lost = true, status = "bridge: AA disconnected"))
         assertEquals(Phase.ERROR, s.phase)
         assertEquals(PrimaryAction.RESTART_SERVER, s.primary)
         assertEquals(true, s.logLink)
@@ -92,14 +92,14 @@ class HomeLogicTest {
 
     @Test
     fun cableButServerRefusesIsOff() {
-        val s = HomeLogic.compute(inp(running = true, status = "мост: жду сервер ГУ AA", protocol = true))
+        val s = HomeLogic.compute(inp(running = true, status = "bridge: waiting for AA head unit server", protocol = true))
         assertEquals(Phase.OFF, s.phase)
         assertEquals(StageState.DONE, s.stages[1].second.first)
     }
 
     @Test
     fun cableConnectingIsWaiting() {
-        val s = HomeLogic.compute(inp(running = true, status = "мост: старт"))
+        val s = HomeLogic.compute(inp(running = true, status = "bridge: starting"))
         assertEquals(Phase.WAITING, s.phase)
         assertEquals(UiText.res(R.string.home_title_connecting), s.title)
         assertNull(s.primary)
@@ -107,7 +107,7 @@ class HomeLogicTest {
 
     @Test
     fun consentOverridesConnectedAndReconnecting() {
-        for (st in listOf("мост: AA -> CarLife (перекодирование)", "мост: USB потерян, AA жива 8 с")) {
+        for (st in listOf("bridge: AA -> CarLife (transcoding)", "bridge: USB lost, AA alive 8 s")) {
             val s = HomeLogic.compute(inp(running = true, status = st, consent = true))
             assertEquals(st, Phase.WAITING, s.phase)
             assertEquals(Tone.WARN, s.tone)

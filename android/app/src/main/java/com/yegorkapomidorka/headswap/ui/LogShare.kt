@@ -224,49 +224,49 @@ object LogShare {
         }
         return buildString {
             appendLine("Headswap $ver")
-            appendLine("Время: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(Date())}")
-            appendLine("Устройство: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}), ${Build.DISPLAY}")
-            appendLine("Аптайм: ${SystemClock.elapsedRealtime() / 1000} с")
+            appendLine("Time: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(Date())}")
+            appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}), ${Build.DISPLAY}")
+            appendLine("Uptime: ${SystemClock.elapsedRealtime() / 1000} s")
             appendLine()
-            appendLine("Настройки моста")
-            appendLine("  видео: ${if (aa.transcode) "перекодирование" else "passthrough"}")
-            appendLine("  разрешение видео: выбрано ${aa.videoGeometry.label}, в сессии: ${CarLifeState.videoMode?.describe(CarLifeState.densityOverride) ?: "сессии не было"}")
-            appendLine("  масштаб интерфейса AA: ${if (aa.aaDensity == AaDensity.AUTO) "авто" else "${aa.aaDensity} dpi"}")
-            appendLine("  частота кадров: ${aa.fpsSetting.name}")
-            appendLine("  звук по USB: ${aa.usbAudio}")
-            appendLine("  частота музыки: ${aa.musicRate.name}")
-            appendLine("  мой автомобиль: ${aa.carPreset?.let { "${it.name}${if (aa.carSettings == it.settings) "" else ", настройки изменены вручную"}" } ?: "не выбрана"}")
-            appendLine("  сертификат: ${aa.certSet}")
-            appendLine("  автозапуск сервера ГУ: ${aa.autoServer}")
-            appendLine("  микрофон: ${aa.micMode.label}, MODULE_STATUS VR: ${aa.micVrStatus}")
-            appendLine("  проверка обновлений: ${upd.enabled}, на GitHub: ${upd.release()?.version ?: "не проверялось"}")
-            appendLine("  метаданные: музыка ${aa.metaMusic}, навигация ${aa.metaNavi}, поле 6 NAVI_NEXT_TURN_INFO: ${aa.naviField6}, прогресс в ${if (aa.progressSeconds) "с" else "мс"}")
+            appendLine("Bridge settings")
+            appendLine("  video: ${if (aa.transcode) "transcoding" else "passthrough"}")
+            appendLine("  video resolution: selected ${aa.videoGeometry.label}, in session: ${CarLifeState.videoMode?.describe(CarLifeState.densityOverride) ?: "no session yet"}")
+            appendLine("  AA interface scale: ${if (aa.aaDensity == AaDensity.AUTO) "auto" else "${aa.aaDensity} dpi"}")
+            appendLine("  frame rate: ${aa.fpsSetting.name}")
+            appendLine("  USB audio: ${aa.usbAudio}")
+            appendLine("  music sample rate: ${aa.musicRate.name}")
+            appendLine("  my car: ${aa.carPreset?.let { "${it.name}${if (aa.carSettings == it.settings) "" else ", settings changed manually"}" } ?: "not selected"}")
+            appendLine("  certificate: ${aa.certSet}")
+            appendLine("  head unit server auto-start: ${aa.autoServer}")
+            appendLine("  microphone: ${aa.micMode.label}, MODULE_STATUS VR: ${aa.micVrStatus}")
+            appendLine("  update check: ${upd.enabled}, on GitHub: ${upd.release()?.version ?: "not checked"}")
+            appendLine("  metadata: music ${aa.metaMusic}, navigation ${aa.metaNavi}, field 6 NAVI_NEXT_TURN_INFO: ${aa.naviField6}, progress in ${if (aa.progressSeconds) "s" else "ms"}")
             appendLine()
-            appendLine("Данные ГУ и состояние")
+            appendLine("Head unit data and state")
             appendLine(CarLifeState.summary())
             appendLine(AaState.summary())
             appendLine(AutoServer.summary(ctx))
             appendLine()
-            appendLine("Беспровод")
-            appendLine("  бета: ${BuildConfig.WIRELESS_BETA}")
+            appendLine("Wireless")
+            appendLine("  beta: ${BuildConfig.WIRELESS_BETA}")
             appendLine("  ACCESS_LOCAL_NETWORK: ${NetProbe.localNetworkGranted(ctx)}")
-            appendLine("  сети: ${lanText()}")
-            appendLine("  режим: ${CarLifeState.wireless ?: "выключен"}")
-            appendLine("  Bluetooth carlife: ${CarLifeState.btProbe ?: "не запускался"}")
-            val car = CarProfile(ctx)      // без MAC и имени
-            appendLine("  машина: ${if (car.isSet) "выбрана (CDM id ${car.cdmAssociationId})" else "не выбрана"}")
-            if (car.isSet) appendLine("  подключение машины: ${car.connMode}")
-            appendLine("  триггер Bluetooth: ${if (CarProfile.triggerEnabled(ctx)) "включён" else "выключен"}")
-            appendLine("  авто: ${if (CarLifeState.carAuto) "да" else "нет"}")
-            appendLine("  Wi-Fi машины: ${if (CarWifi(ctx).isSet) "задан" else "не задан"}")      // без SSID и пароля
-            appendLine("  сеть машины: ${CarLifeState.carNet}")
+            appendLine("  networks: ${lanText()}")
+            appendLine("  mode: ${CarLifeState.wireless ?: "off"}")
+            appendLine("  Bluetooth carlife: ${CarLifeState.btProbe ?: "not started"}")
+            val car = CarProfile(ctx)      // no MAC or name
+            appendLine("  car: ${if (car.isSet) "selected (CDM id ${car.cdmAssociationId})" else "not selected"}")
+            if (car.isSet) appendLine("  car connection: ${car.connMode}")
+            appendLine("  Bluetooth trigger: ${if (CarProfile.triggerEnabled(ctx)) "on" else "off"}")
+            appendLine("  auto: ${if (CarLifeState.carAuto) "yes" else "no"}")
+            appendLine("  car Wi-Fi: ${if (CarWifi(ctx).isSet) "set" else "not set"}")      // no SSID or password
+            appendLine("  car network: ${CarLifeState.carNet}")
         }
     }
 
     private fun lanText(): String = try {
-        LanIface.scan().joinToString(", ").ifEmpty { "нет" }
+        LanIface.scan().joinToString(", ").ifEmpty { "none" }
     } catch (e: Exception) {
-        "ошибка ${e.javaClass.simpleName}"
+        "error ${e.javaClass.simpleName}"
     }
 
     /** Очистить: удалить старые файлы headswap-*.log (текущий оставить). */

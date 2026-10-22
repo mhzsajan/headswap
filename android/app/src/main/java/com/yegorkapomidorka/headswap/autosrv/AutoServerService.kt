@@ -27,7 +27,7 @@ class AutoServerService : AccessibilityService() {
         super.onServiceConnected()
         AppLog.init(this)
         AutoServer.service = this
-        AutoServer.log("служба спецвозможностей подключена")
+        AutoServer.log("accessibility service connected")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -38,7 +38,7 @@ class AutoServerService : AccessibilityService() {
 
     override fun onUnbind(intent: Intent?): Boolean {
         if (AutoServer.service === this) AutoServer.service = null
-        AutoServer.log("служба спецвозможностей отключена")
+        AutoServer.log("accessibility service disconnected")
         return super.onUnbind(intent)
     }
 
@@ -102,13 +102,13 @@ class AccessibilityServerUi(private val svc: AutoServerService) : ServerUi {
                 val wl = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "headswap:autosrv")
                 wl.acquire(10_000)
                 Thread.sleep(800)
-                note += " -> после включения экрана interactive=${pm.isInteractive} keyguard=${km.isKeyguardLocked}"
+                note += " -> after turning the screen on interactive=${pm.isInteractive} keyguard=${km.isKeyguardLocked}"
             } catch (e: Exception) {
-                note += " (включить экран не вышло: ${e.javaClass.simpleName})"
+                note += " (could not turn the screen on: ${e.javaClass.simpleName})"
             }
         }
-        if (!pm.isInteractive) return Pair(false, "экран выключен ($note)")
-        if (km.isKeyguardLocked) return Pair(false, "телефон заблокирован ($note)")
+        if (!pm.isInteractive) return Pair(false, "screen is off ($note)")
+        if (km.isKeyguardLocked) return Pair(false, "phone is locked ($note)")
         return Pair(true, note)
     }
 
@@ -120,7 +120,7 @@ class AccessibilityServerUi(private val svc: AutoServerService) : ServerUi {
         )
         true
     } catch (e: Exception) {
-        AutoServer.log("не открыть настройки AA: ${e.javaClass.simpleName}: ${e.message}")
+        AutoServer.log("cannot open AA settings: ${e.javaClass.simpleName}: ${e.message}")
         false
     }
 
@@ -152,7 +152,7 @@ class AccessibilityServerUi(private val svc: AutoServerService) : ServerUi {
         moreSearchSince = 0
         if (!moreFallbackLogged) {
             moreFallbackLogged = true
-            AutoServer.log("кнопка «Ещё» не найдена по описанию, нажимаю по положению: ${describe(overflow)}")
+            AutoServer.log("the «More» button was not found by description, tapping by position: ${describe(overflow)}")
         }
         return click(overflow)
     }
@@ -228,9 +228,9 @@ class AccessibilityServerUi(private val svc: AutoServerService) : ServerUi {
                 Intent(svc, MainActivity::class.java).putExtra(MainActivity.EXTRA_CMD, "front")
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
             )
-            AutoServer.log("возврат в приложение")
+            AutoServer.log("returning to the app")
         } catch (e: Exception) {
-            AutoServer.log("возврат в приложение не вышел (${e.javaClass.simpleName}), жму Home")
+            AutoServer.log("returning to the app failed (${e.javaClass.simpleName}), pressing Home")
             svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
         }
     }
@@ -277,11 +277,11 @@ object AaLabels {
         val res = try {
             ctx.packageManager.getResourcesForApplication(AccessibilityServerUi.AA_PACKAGE)
         } catch (e: PackageManager.NameNotFoundException) {
-            AutoServer.log("подписи AA: пакет не виден (${e.javaClass.simpleName}), только встроенные списки")
+            AutoServer.log("AA labels: package not visible (${e.javaClass.simpleName}), using built-in lists only")
             AutoServerText.setAaLabels(emptyList(), emptyList(), emptyList())
             return
         } catch (e: Exception) {
-            AutoServer.log("подписи AA: ресурсы не открылись (${e.javaClass.simpleName}: ${e.message}), только встроенные списки")
+            AutoServer.log("AA labels: resources did not open (${e.javaClass.simpleName}: ${e.message}), using built-in lists only")
             AutoServerText.setAaLabels(emptyList(), emptyList(), emptyList())
             return
         }
@@ -298,6 +298,6 @@ object AaLabels {
         val stop = read(STOP)
         val more = read(MORE)
         AutoServerText.setAaLabels(start, stop, more)
-        AutoServer.log("подписи AA (${res.configuration.locales.toLanguageTags()}): запустить=$start остановить=$stop ещё=$more")
+        AutoServer.log("AA labels (${res.configuration.locales.toLanguageTags()}): start=$start stop=$stop more=$more")
     }
 }

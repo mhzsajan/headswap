@@ -117,14 +117,14 @@ class AutoServerPolicyTest {
     @Test
     fun buttonRunsRegardlessOfPrefButNeedsService() {
         assertNull(skip(Trigger.BUTTON, pref = false, usb = false))
-        assertTrue(skip(Trigger.BUTTON, svc = false)!!.contains("служба"))
+        assertTrue(skip(Trigger.BUTTON, svc = false)!!.contains("accessibility service"))
     }
 
     @Test
     fun usbAttachSkipsOnWarmSessionOrDisabledPref() {
         assertNull(skip(Trigger.USB_ATTACH))
-        assertTrue(skip(Trigger.USB_ATTACH, warm = true)!!.contains("тёплая"))
-        assertTrue(skip(Trigger.USB_ATTACH, pref = false)!!.contains("выключен"))
+        assertTrue(skip(Trigger.USB_ATTACH, warm = true)!!.contains("warm"))
+        assertTrue(skip(Trigger.USB_ATTACH, pref = false)!!.contains("disabled"))
         assertTrue(skip(Trigger.USB_ATTACH, svc = false) != null)
         assertTrue(skip(Trigger.USB_ATTACH, usb = false) != null)
     }
@@ -156,7 +156,7 @@ class AutoServerPolicyTest {
     fun consentHoldSkipsAutoTriggersOnly() {
         assertEquals(AutoServerPolicy.CONSENT_SKIP, skip(Trigger.AFTER_SESSION, hold = true))
         assertEquals(AutoServerPolicy.CONSENT_SKIP, skip(Trigger.RETRY, locked = true, hold = true))
-        assertTrue(AutoServerPolicy.CONSENT_SKIP.contains("настройку Android Auto"))
+        assertTrue(AutoServerPolicy.CONSENT_SKIP.contains("Android Auto setup"))
         assertNull(skip(Trigger.BUTTON, hold = true))
         assertNull(skip(Trigger.USB_ATTACH, hold = true))
         assertNull(skip(Trigger.AFTER_SESSION, hold = false))
@@ -165,13 +165,13 @@ class AutoServerPolicyTest {
     @Test
     fun consentResultText() {
         for (t in Trigger.values()) assertEquals(AaBridgeCore.TEXT_AA_CONSENT, AutoServerPolicy.resultText(t, AutoResult.CONSENT))
-        assertEquals("Завершите настройку Android Auto на телефоне", AaBridgeCore.TEXT_AA_CONSENT)
+        assertEquals("Finish setting up Android Auto on the phone", AaBridgeCore.TEXT_AA_CONSENT)
     }
 
     @Test
     fun placeholderTexts() {
         assertEquals(AaBridgeCore.TEXT_UNLOCK_PHONE, AutoServerPolicy.resultText(Trigger.USB_ATTACH, AutoResult.LOCKED))
-        assertEquals("Разблокируйте телефон", AaBridgeCore.TEXT_UNLOCK_PHONE)
+        assertEquals("Unlock the phone", AaBridgeCore.TEXT_UNLOCK_PHONE)
         assertEquals(AaBridgeCore.TEXT_START_SERVER, AutoServerPolicy.resultText(Trigger.USB_ATTACH, AutoResult.NOT_FOUND))
         assertEquals(AaBridgeCore.TEXT_AA_LOST, AutoServerPolicy.resultText(Trigger.AFTER_SESSION, AutoResult.TIMEOUT))
         assertEquals(AaBridgeCore.TEXT_WAIT_FRAME, AutoServerPolicy.resultText(Trigger.AFTER_SESSION, AutoResult.OK))
@@ -300,7 +300,7 @@ class ServerAutomationTest {
         assertEquals(listOf("open", "more", "stop", "more", "start", "more", "back", "return"), aa.actions)
         assertTrue("в конце сервер запущен", aa.serverRunning)
         assertEquals("коннектор отпускается один раз, после Запустить", 1, started)
-        assertTrue(log.any { it.contains("подтверждено") || it.contains("«Остановить…»") })
+        assertTrue(log.any { it.contains("confirmed") || it.contains("«Stop…»") })
         assertTrue(aa.returned)
         assertTrue("весь сценарий укладывается в разумное время: ${o.tookMs}", o.tookMs < 15_000)
     }
@@ -312,7 +312,7 @@ class ServerAutomationTest {
         assertEquals(o.toString(), AutoResult.OK, o.result)
         assertEquals(listOf("open", "more", "stop", "open", "more", "start", "more", "back", "return"), aa.actions)
         assertTrue(aa.serverRunning)
-        assertTrue(log.any { it.contains("открываю настройки заново") })
+        assertTrue(log.any { it.contains("reopening settings") })
     }
 
     @Test
@@ -350,7 +350,7 @@ class ServerAutomationTest {
         val aa = FakeAa(serverRunning = true, aaOpens = false)
         val (o, _) = run(aa)
         assertEquals(AutoResult.NOT_FOUND, o.result)
-        assertTrue(o.detail.contains("окно Android Auto"))
+        assertTrue(o.detail.contains("Android Auto window"))
     }
 
     @Test
@@ -369,7 +369,7 @@ class ServerAutomationTest {
         val aa = FakeAa(serverRunning = false, startIgnored = true)
         val (o, _) = run(aa)
         assertEquals(AutoResult.ERROR, o.result)
-        assertTrue(o.detail.contains("снова предлагает «Запустить»"))
+        assertTrue(o.detail.contains("offers «Start» again"))
         assertEquals("Запустить нажат ещё дважды при проверке", 3, aa.actions.count { it == "start" })
     }
 
@@ -381,7 +381,7 @@ class ServerAutomationTest {
         assertEquals(listOf("open"), aa.actions)
         assertEquals(0, aa.backs)
         assertEquals(false, aa.returned)
-        assertEquals("дамп в лог один раз", 1, log.count { it.startsWith("дамп") })
+        assertEquals("дамп в лог один раз", 1, log.count { it.startsWith("dump") })
         assertTrue(aa.serverRunning)
     }
 

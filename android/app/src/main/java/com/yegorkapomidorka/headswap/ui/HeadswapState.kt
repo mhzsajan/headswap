@@ -77,9 +77,9 @@ object HomeLogic {
 
     fun compute(i: Inputs): HomeState {
         val st = i.aaStatus
-        val reconnecting = i.bridgeRunning && "USB потерян" in st
-        val connected = i.bridgeRunning && st.startsWith("мост: AA -> CarLife")
-        val refused = i.bridgeRunning && "жду сервер ГУ" in st
+        val reconnecting = i.bridgeRunning && "USB lost" in st
+        val connected = i.bridgeRunning && st.startsWith("bridge: AA -> CarLife")
+        val refused = i.bridgeRunning && "waiting for AA head unit server" in st
         val total = if (i.graceTotalS > 0) i.graceTotalS else 8
         return when {
             i.setupError != null && !i.bridgeRunning -> state(
@@ -149,7 +149,7 @@ object HomeLogic {
             )
             i.bridgeRunning -> state(
                 Phase.WAITING, Tone.PRI, HeroIcon.PLUG, UiText.res(R.string.home_title_connecting),
-                UiText.res(if ("отключился" in st) R.string.home_sub_aa_dropped else R.string.home_sub_cable_ok),
+                UiText.res(if ("disconnected" in st) R.string.home_sub_aa_dropped else R.string.home_sub_cable_ok),
                 listOf(
                     StageState.ACTIVE to UiText.res(R.string.home_stage_connecting),
                     if (i.protocolKnown) StageState.DONE to CARLIFE else StageState.ACTIVE to UiText.res(R.string.home_stage_handshake),
@@ -221,7 +221,7 @@ object HeadswapStatus {
     var connectedSince = 0L
         private set
 
-    private val graceRe = Regex("""жива\s+(\d+)\s*с""")
+    private val graceRe = Regex("""AA alive\s+(\d+)\s*s""")
 
     /** Пользователь нажал «Запустить сервер ГУ» (или открыл настройки AA): считаем сервер запущенным. */
     fun markServerRequested() {
@@ -241,8 +241,8 @@ object HeadswapStatus {
         val now = SystemClock.elapsedRealtime()
         val running = CarLifeState.running
         val st = AaState.status
-        val connectedNow = running && st.startsWith("мост: AA -> CarLife")
-        val reconnectingNow = running && "USB потерян" in st
+        val connectedNow = running && st.startsWith("bridge: AA -> CarLife")
+        val reconnectingNow = running && "USB lost" in st
 
         if (running && !prevRunning) {
             lost = false

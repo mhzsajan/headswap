@@ -5,29 +5,29 @@ import com.yegorkapomidorka.headswap.aa.AaBridgeCore
 /** Что запустило перезапуск сервера ГУ. */
 enum class Trigger(val label: String) {
     /** Кнопка в UI или команда adb: всегда, флаг автозапуска не учитывается. */
-    BUTTON("кнопка"),
+    BUTTON("button"),
 
     /** USB_ACCESSORY_ATTACHED в режиме моста, до первой попытки подключения коннектора. */
-    USB_ATTACH("USB подключён"),
+    USB_ATTACH("USB attached"),
 
     /** AA-сессия завершилась, а USB всё ещё подключён. */
-    AFTER_SESSION("сессия AA завершена"),
+    AFTER_SESSION("AA session ended"),
 
     /** Предыдущая попытка упёрлась в заблокированный телефон: повтор, когда его разблокируют. */
-    RETRY("повтор после блокировки"),
+    RETRY("retry after lock"),
 }
 
 /** CONSENT: на телефоне экран первой настройки Android Auto (согласие/разрешения), автоматизация ничего не трогала. */
 enum class AutoResult { OK, LOCKED, NOT_FOUND, TIMEOUT, SERVICE_OFF, ERROR, CONSENT }
 
 class AutoOutcome(val result: AutoResult, val detail: String, val tookMs: Long) {
-    override fun toString() = "$result: $detail (${tookMs} мс)"
+    override fun toString() = "$result: $detail (${tookMs} ms)"
 }
 
 /** Решения «запускать ли автоматизацию» и «что показать на ГУ». Чистая логика, без Android. */
 object AutoServerPolicy {
     /** Причина пропуска, пока на телефоне висит экран первой настройки AA (BridgeService по ней показывает подсказку). */
-    const val CONSENT_SKIP = "ждём, пока пользователь пройдёт настройку Android Auto на телефоне"
+    const val CONSENT_SKIP = "waiting for the user to finish Android Auto setup on the phone"
 
     /**
      * null = запускать, иначе причина пропуска. startPending: прошлый USB_ATTACH/AFTER_SESSION пропущен, потому что
@@ -43,26 +43,26 @@ object AutoServerPolicy {
         startPending: Boolean = false,
         consentHold: Boolean = false,
     ): String? {
-        if (!serviceConnected) return "служба спецвозможностей не подключена"
+        if (!serviceConnected) return "accessibility service is not connected"
         return when (trigger) {
             Trigger.BUTTON -> null
             Trigger.USB_ATTACH -> when {
-                !prefEnabled -> "автозапуск выключен в настройках"
-                warmAaSession -> "жива тёплая AA-сессия, не трогаю"
-                !usbAlive -> "USB уже отключён"
+                !prefEnabled -> "auto-start is disabled in settings"
+                warmAaSession -> "warm AA session is alive, leaving it alone"
+                !usbAlive -> "USB is already disconnected"
                 else -> null
             }
             Trigger.AFTER_SESSION -> when {
-                !prefEnabled -> "автозапуск выключен в настройках"
-                !usbAlive -> "USB отключён, сервер перезапускать некому"
+                !prefEnabled -> "auto-start is disabled in settings"
+                !usbAlive -> "USB disconnected, no head unit server to restart"
                 consentHold -> CONSENT_SKIP
                 else -> null
             }
             Trigger.RETRY -> when {
-                !prefEnabled -> "автозапуск выключен в настройках"
-                !usbAlive -> "USB отключён"
+                !prefEnabled -> "auto-start is disabled in settings"
+                !usbAlive -> "USB disconnected"
                 consentHold -> CONSENT_SKIP
-                !lastLocked && !startPending -> "прошлая попытка не упёрлась в блокировку"
+                !lastLocked && !startPending -> "the previous attempt did not fail on a locked phone"
                 else -> null
             }
         }
