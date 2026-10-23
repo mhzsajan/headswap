@@ -55,6 +55,8 @@ enum class CarPreset(val titleRes: Int, val settings: CarSettings = CarSettings(
     SKODA_OCTAVIA_PRO(R.string.car_skoda_octavia_pro, CarSettings(videoMode = VideoMode.WIDE_2_1)),
     TOYOTA_COROLLA_CROSS_2024(R.string.car_toyota_corolla_cross_2024),
     TOYOTA_LEVIN(R.string.car_toyota_levin),
+    /** VW 187B: нативный экран 800×480; R800 даёт 1:1 без даунскейла заглушки. */
+    VW_187B(R.string.car_vw_187b, CarSettings(videoMode = VideoMode.R800)),
     /** Китай: 1920×1080, 30 кадров (Егор, 18.10). */
     VW_BORA_2021(R.string.car_vw_bora_2021, CarSettings(videoMode = VideoMode.R1080)),
     /** 1920×1080, остальное «Авто» (@Aleksandr_456_55). */

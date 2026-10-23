@@ -8,9 +8,10 @@ This is the **`mhzsajan/headswap` fork**, focused on connection reliability and 
 
 ## What this fork changes
 
-Version **2.5.0-reliability4** (`versionCode 65`), on top of upstream **2.5.0**:
+Version **2.5.0-reliability5** (`versionCode 66`), on top of upstream **2.5.0**:
 
 - **New connection splash.** The placeholder shown while Android Auto connects is now a dark Android Auto mark with a red conversion arrow, a small Google Sans Mono “By Sajan” credit, and a thin red progress sweep. The old ring, the “Headswap” wordmark, and the connection-status text are gone.
+- **VW 187B preset.** One tap in “My car” selects **800×480 (R800)**, so the 187B runs the splash at 1:1 pixels instead of downscaling it from 1280×720.
 - **In-app connection diagnosis.** A "Why it won't connect?" screen reads the local log, lists likely causes with concrete actions, and records whether each step helped. The analysis runs on the phone; the log is not uploaded.
 - **`tools/logdiag.py`.** The same rules can be run on a log file from a PC: `py tools/logdiag.py <log>` prints probable causes and advice.
 - **Self-learning pause keepalive.** Some head units stop sending CarLife heartbeats while Android Auto is paused (for example during a phone call or a voice prompt). The bridge now learns, per head-unit channel and transport (`/usb` or `/air`), whether a pause needs its own keepalive. It learns after one failed pause, persists the result, and never learns this for Desay G6S over USB. No hardcoded per-car whitelist.
