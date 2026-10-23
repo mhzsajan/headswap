@@ -181,8 +181,16 @@ class CarLifeSession(
         CarLifeState.status = "connected, waiting for HU_PROTOCOL_VERSION"
         transport.start(::dispatch, ::logTx, ::close)
         sched.scheduleWithFixedDelay({ tick() }, 1, 1, TimeUnit.SECONDS)
-        sched.scheduleWithFixedDelay({ pauseHeartbeat() }, PAUSE_HEARTBEAT_MS, PAUSE_HEARTBEAT_MS, TimeUnit.MILLISECONDS)
-        sched.scheduleWithFixedDelay({ adaptBitrate() }, 1000, BITRATE_POLL_MS, TimeUnit.MILLISECONDS)
+        // keepalive на PAUSE и адаптация битрейта - один таймер 100 мс (было два независимых: 20 пробуждений cl-sched в секунду)
+        val pollStart = SystemClock.elapsedRealtime()
+        sched.scheduleWithFixedDelay({
+            try {
+                pauseHeartbeat()
+            } catch (e: Exception) {
+                AppLog.e("keepalive на PAUSE", e)          // исключение отменило бы и адаптацию битрейта
+            }
+            if (SystemClock.elapsedRealtime() - pollStart >= BITRATE_START_MS) adaptBitrate()
+        }, POLL_MS, POLL_MS, TimeUnit.MILLISECONDS)
     }
 
     fun close(reason: String) {
@@ -1017,11 +1025,10 @@ class CarLifeSession(
             vFrames++
             vBytes += size
             if (vFrames == 1L) WLog.ev(WLog.HS, "first-video", "bytes" to size)
-            val nals = AnnexB.nalTypes(inner, 12)
-            val key = 5 in nals
+            val key = AnnexB.isIdr(inner, 12)
             if (key) vKeys++
             if (vFrames <= 5 || key) {
-                AppLog.msg("TX", chan, inner.size, type, declared, "nal=$nals", inner, ui = vFrames <= 5)
+                AppLog.msg("TX", chan, inner.size, type, declared, "nal=${AnnexB.nalTypes(inner, 12)}", inner, ui = vFrames <= 5)
             }
         }
     }
@@ -1244,7 +1251,9 @@ class CarLifeSession(
         private val TOUCH_TO_AA = setOf(0, 1, 2, 5, 6)
         private const val TTS_TX_LOGGED = 8           // TTS_DATA после INIT с временем записи в транспорт (h222)
         private const val MAX_AUDIO_QUEUE = 180       // звук не принимается, если в общей очереди больше пакетов
-        private const val BITRATE_POLL_MS = 100L
+        /** Общий период keepalive на PAUSE (VW 20082120 ждёт VIDEO_HEARTBEAT раз в 100 мс) и опроса BitratePolicy. */
+        private const val POLL_MS = 100L
+        private const val BITRATE_START_MS = 1000L
         private const val VW_20082138_CEILING_BPS = 2_000_000
         private const val VW_20082138_MIN_BPS = 1_500_000
         private const val VW_20082138_IDR_LIMIT = 450_000

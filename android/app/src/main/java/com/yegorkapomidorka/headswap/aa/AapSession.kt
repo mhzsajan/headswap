@@ -2,6 +2,7 @@ package com.yegorkapomidorka.headswap.aa
 
 import com.yegorkapomidorka.headswap.LogThrottle
 import com.yegorkapomidorka.headswap.PbReader
+import com.yegorkapomidorka.headswap.ThreadPrio
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -334,6 +335,7 @@ class AapSession(
     private class PeerClosed(msg: String) : Exception(msg)
 
     private fun run() {
+        ThreadPrio.raise()          // приём видео и звука AA, расшифровка, подача в декодер
         try {
             try {
                 sock = (socketFactory ?: {
@@ -450,6 +452,7 @@ class AapSession(
     }
 
     private fun writerLoop() {
+        ThreadPrio.raise()          // ACK видео: без них AA упирается в окно maxUnacked и придерживает кадры
         while (true) {
             val job = outQueue.take()
             try {
@@ -620,8 +623,14 @@ class AapSession(
             log("AA ch${fr.chan}: сообщение короче поля type", true)
             return
         }
-        dispatch(fr.chan, u16(whole, 0), whole.copyOfRange(2, whole.size))
+        val type = u16(whole, 0)
+        // медиа - сразу из целого сообщения, без промежуточной копии payload (кадр видео копировался дважды)
+        if (isMediaData(fr.chan, type)) onMediaData(fr.chan, type, whole, 2)
+        else dispatch(fr.chan, type, whole.copyOfRange(2, whole.size))
     }
+
+    private fun isMediaData(chan: Int, type: Int) =
+        (chan == M.CH_VIDEO || chan in M.AUDIO_CHANNELS) && (type == M.MEDIA_DATA || type == M.MEDIA_CODEC_CONFIG)
 
     private fun onPlainFrame(fr: F.Frame) {
         if (fr.body.size < 2) {
@@ -641,9 +650,8 @@ class AapSession(
     }
 
     private fun dispatch(chan: Int, type: Int, payload: ByteArray) {
-        val isMediaData = (chan == M.CH_VIDEO || chan in M.AUDIO_CHANNELS) && (type == M.MEDIA_DATA || type == M.MEDIA_CODEC_CONFIG)
-        if (isMediaData) {
-            onMediaData(chan, type, payload)
+        if (isMediaData(chan, type)) {
+            onMediaData(chan, type, payload, 0)
             return
         }
         // ack микрофона идёт 8 раз в секунду, статус плеера и дистанция навигации - раз в секунду: в файл, не в UI
@@ -731,21 +739,23 @@ class AapSession(
         }
     }
 
-    private fun onMediaData(chan: Int, type: Int, payload: ByteArray) {
+    /** Медиа-сообщение; payload начинается с байта [off] массива [msg] (без копии до тела). */
+    private fun onMediaData(chan: Int, type: Int, msg: ByteArray, off: Int) {
         val isData = type == M.MEDIA_DATA
+        val size = msg.size - off
         val body: ByteArray
         var ptsUs = 0L
         var note: String
         if (isData) {
-            if (payload.size < 8) {
-                log("AA ch$chan: DATA короче своего timestamp (${payload.size} Б)", true)
+            if (size < 8) {
+                log("AA ch$chan: DATA короче своего timestamp ($size Б)", true)
                 return
             }
-            for (i in 0 until 8) ptsUs = (ptsUs shl 8) or (payload[i].toLong() and 0xFF)
-            body = payload.copyOfRange(8, payload.size)
+            for (i in 0 until 8) ptsUs = (ptsUs shl 8) or (msg[off + i].toLong() and 0xFF)
+            body = msg.copyOfRange(off + 8, msg.size)
             note = "ts=${ptsUs}us"
         } else {
-            body = payload
+            body = if (off == 0) msg else msg.copyOfRange(off, msg.size)
             note = "codec config"
         }
 

@@ -9,6 +9,7 @@ import android.os.SystemClock
 import android.view.Surface
 import com.yegorkapomidorka.headswap.AnnexB
 import com.yegorkapomidorka.headswap.AppLog
+import com.yegorkapomidorka.headswap.ThreadPrio
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -216,7 +217,7 @@ class AaTranscoder(
         if (!running) return
         winIn.incrementAndGet()
         totalIn.incrementAndGet()
-        val idr = 5 in AnnexB.nalTypes(annexB)
+        val idr = AnnexB.isIdr(annexB)
         synchronized(lock) {
             // мост подаёт кадры вне своей блокировки: stop() мог пройти между проверкой выше и lock, декодер не пересоздаём
             if (!running) return
@@ -337,6 +338,7 @@ class AaTranscoder(
     }
 
     private fun decodeLoop(d: Dec) {
+        ThreadPrio.raise()
         val info = MediaCodec.BufferInfo()
         try {
             while (d.alive && running) {
@@ -394,6 +396,7 @@ class AaTranscoder(
     // ---------------- выход энкодера ----------------
 
     private fun encodeLoop(c: MediaCodec) {
+        ThreadPrio.raise()
         val info = MediaCodec.BufferInfo()
         try {
             while (running) {

@@ -9,6 +9,7 @@ import com.yegorkapomidorka.headswap.Hex
 import com.yegorkapomidorka.headswap.InnerAssembler
 import com.yegorkapomidorka.headswap.LogThrottle
 import com.yegorkapomidorka.headswap.ProtocolDesync
+import com.yegorkapomidorka.headswap.ThreadPrio
 import com.yegorkapomidorka.headswap.Wire
 import com.yegorkapomidorka.headswap.aa.DrainMeter
 import java.io.FileInputStream
@@ -23,7 +24,7 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * Один байтовый поток с внешним заголовком [chan u32][len u32]: USB AOA и debug-TCP.
  * Код чтения и записи перенесён из CarLifeSession без изменений поведения: одна FIFO-очередь на все каналы,
- * единственный писатель, заголовок отдельным write и тело кусками <= 16384 (Wire.writeSequence), flush на сообщение.
+ * единственный писатель, заголовок отдельным write и тело кусками <= 16384 (Wire.writeTo), flush на сообщение.
  */
 class StreamTransport(
     private val input: InputStream,
@@ -96,6 +97,7 @@ class StreamTransport(
     }
 
     private fun readLoop(sink: (Int, ByteArray) -> Unit, onClosed: (String) -> Unit) {
+        ThreadPrio.raise()          // тачи и микрофон ГУ
         val buf = ByteArray(Wire.CHUNK)
         try {
             while (!closed.get()) {
@@ -127,6 +129,7 @@ class StreamTransport(
     }
 
     private fun writeLoop(onWritten: (Int, ByteArray) -> Unit, onClosed: (String) -> Unit) {
+        ThreadPrio.raise()          // видео и звук в USB
         try {
             while (!closed.get()) {
                 val o = queue.take()
@@ -137,7 +140,7 @@ class StreamTransport(
                 }
                 // заголовок отдельным write, тело следом кусками <= 16384 (спека §1.4)
                 val t0 = System.nanoTime()
-                for (part in Wire.writeSequence(o.chan, o.inner)) output.write(part)
+                Wire.writeTo(output, o.chan, o.inner)
                 output.flush()
                 drain.onWrite(clock(), video, o.inner.size, System.nanoTime() - t0)
                 onWritten(o.chan, o.inner)
