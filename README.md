@@ -8,7 +8,7 @@ This is the **`mhzsajan/headswap` fork**, focused on connection reliability and 
 
 ## What this fork changes
 
-Version **2.5.0-reliability2** (`versionCode 63`), on top of upstream **2.5.0**:
+Version **2.5.0-reliability3** (`versionCode 64`), on top of upstream **2.5.0**:
 
 - **In-app connection diagnosis.** A "Why it won't connect?" screen reads the local log, lists likely causes with concrete actions, and records whether each step helped. The analysis runs on the phone; the log is not uploaded.
 - **`tools/logdiag.py`.** The same rules can be run on a log file from a PC: `py tools/logdiag.py <log>` prints probable causes and advice.
@@ -20,6 +20,7 @@ Version **2.5.0-reliability2** (`versionCode 63`), on top of upstream **2.5.0**:
   - P2P rejoin and Desay G6S air heartbeat.
   - Configurable music chunk size for USB audio.
 - **`syncAaCerts` Gradle task.** Release builds verify that the head-unit certificates are present and copy them from the main worktree when needed, so a release cannot silently ship without them.
+- **Lower hot-path cost.** Media and raw-USB logging is throttled instead of one line per frame, the video body is copied once instead of twice, H.264 type checks stop at the first slice, and decoder feeding no longer holds the bridge lock. The GL relay wakes only when it has something to draw, PAUSE keepalive and bitrate adaptation share one 100 ms timer, and video-path threads run at display priority. This is what upstream PR #65 and the contributor's `claude/perf-wakeups-priority` branch proposed; the branch content is merged here, including the parts the PR description mentioned but did not contain.
 - **English-only UI.** The Russian locale and the in-app language picker were removed. Status text, notifications, onboarding, settings, the connection diagnosis, and the shared diagnostic report are English.
 
 The bridge still accepts the same cars and head units as upstream. If a unit worked before, it should keep working; the new pause logic only adds a fallback.

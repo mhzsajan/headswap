@@ -1,5 +1,5 @@
 {
-  "latest": "2.4.4",
+  "latest": "2.5.0",
   "markers": {
     "attached": "== USB_ACCESSORY_ATTACHED",
     "acc_no_perm": "аксессуар\\[\\d+\\]: .*hasPermission=false",
