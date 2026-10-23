@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.graphics.Typeface
 import android.hardware.usb.UsbManager
 import android.net.Network
 import android.os.Handler
@@ -76,6 +77,10 @@ class BridgeService : Service() {
     }
 
     private val main = Handler(Looper.getMainLooper())
+    /** Google Sans Mono из assets; если шрифт не открылся, заглушка останется на системном monospace. */
+    private val placeholderTypeface: Typeface? by lazy {
+        runCatching { Typeface.createFromAsset(assets, "fonts/google_sans_mono_regular.ttf") }.getOrNull()
+    }
     private var session: CarLifeSession? = null
     private var host: BridgeHost? = null
     private var stopRequested = false
@@ -826,7 +831,11 @@ class BridgeService : Service() {
         stopRequested = false
 
         val sref = arrayOfNulls<CarLifeSession>(1)
-        val s = CarLifeSession(transport, cfg, h.core, PhoneThermal(this), onHuSize = { w, hh -> aaPrefs.saveHuSize(w, hh) }) { reason -> main.post { onSessionClosed(sref[0]!!, reason) } }
+        val s = CarLifeSession(
+            transport, cfg, h.core, PhoneThermal(this),
+            onHuSize = { w, hh -> aaPrefs.saveHuSize(w, hh) },
+            labelTypeface = placeholderTypeface,
+        ) { reason -> main.post { onSessionClosed(sref[0]!!, reason) } }
         sref[0] = s
         session = s
         s.start()

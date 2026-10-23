@@ -5,7 +5,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.RectF
 import android.graphics.Typeface
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
@@ -15,7 +14,7 @@ import android.os.SystemClock
 import android.view.Surface
 
 /**
- * H.264-энкодер (Surface input) и рисовалка заглушки моста (текст, пока AA не подключился).
+ * H.264-энкодер (Surface input) и рисовалка заглушки моста (анимация, пока AA не подключился).
  * Кадры отдаются в Annex-B с 4-байтными стартовыми кодами; codec config приходит отдельно (onConfig).
  */
 class VideoSource(
@@ -24,6 +23,8 @@ class VideoSource(
     private val fps: Int,
     private val bitrate: Int,
     private val listener: Listener,
+    /** Подпись под иконкой; null — системный monospace (тесты и снимки без контекста). */
+    private val labelTypeface: Typeface? = null,
 ) {
     interface Listener {
         fun onConfig(csd: ByteArray)
@@ -34,7 +35,7 @@ class VideoSource(
     @Volatile var framesRendered = 0L
         private set
 
-    /** Текст заглушки: крупная надпись и живой индикатор вместо видео AA. */
+    /** Включённая заглушка; текст статуса остаётся только в логе. null — видео AA. */
     @Volatile var banner: String? = null
 
     @Volatile private var running = false
@@ -45,8 +46,7 @@ class VideoSource(
     var encoderName: String = "?"
         private set
 
-    private val fill = Paint()
-    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.DEFAULT_BOLD }
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
 
     @Synchronized
     fun start() {
@@ -198,169 +198,146 @@ class VideoSource(
 
     /** Текущий кадр заглушки в Bitmap: с него транскодер начинает зум-растворение в картинку AA. Любая нить. */
     fun snapshot(): Bitmap? {
-        val msg = banner ?: return null
+        if (banner == null) return null
         val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        drawBanner(Canvas(bmp), width, height, msg, framesRendered, Paint(text), Paint(fill))
+        drawBanner(Canvas(bmp), width, height, framesRendered, Paint(fill))
         return bmp
     }
 
-    private fun drawBanner(c: Canvas, msg: String) = drawBanner(c, width, height, msg, framesRendered, text, fill)
-
-    private fun drawBanner(c: Canvas, width: Int, height: Int, msg: String, n: Long, text: Paint, fill: Paint) {
+    /**
+     * Заглушка без текста: знак Android Auto, стрелки конвертации, подпись «By Sajan» и полоса
+     * прогресса. Цвета плоские: на CBR слабый энкодер рисует градиенты полосами. Размеры берутся
+     * от высоты кадра, но снизу ограничены пикселями: на 800x480 тонкие штрихи иначе исчезают в
+     * кодировании. Состояние только от t = n/fps, поэтому snapshot() с любой нити рисует тот же кадр.
+     */
+    private fun drawBanner(c: Canvas, width: Int, height: Int, n: Long, p: Paint) {
         val w = width.toFloat()
         val h = height.toFloat()
-        // плоские цвета: на CBR 4 Мбит/с градиенты слабого энкодера идут полосами
         c.drawColor(BG)
-        drawLogo(c, w / 2, h * 0.34f, minOf(h * 0.36f, w * 0.3f), n / fps.toFloat(), fill)
 
-        // словесный знак: Head белым, swap янтарным
-        text.textAlign = Paint.Align.LEFT
-        text.typeface = WORDMARK
-        text.textSize = h * 0.085f
-        val head = "Head"
-        val swap = "swap"
-        val wHead = text.measureText(head)
-        var x = w / 2 - (wHead + text.measureText(swap)) / 2
-        val yWord = h * 0.66f
-        text.color = Color.WHITE
-        c.drawText(head, x, yWord, text)
-        x += wHead
-        text.color = AMBER
-        c.drawText(swap, x, yWord, text)
+        val s = h / 1080f
+        val t = n / fps.toFloat()
 
-        // статус моста: по нему видно, чего ждём (сервер ГУ, разблокировка, кадр)
-        text.typeface = Typeface.DEFAULT_BOLD
-        text.textAlign = Paint.Align.CENTER
-        text.color = STATUS
-        text.textSize = h * 0.065f
-        val lh = text.textSize * 1.25f
-        var y = h * 0.81f
-        for (l in wrapBalanced(msg, w * 0.88f, text)) {
-            c.drawText(l, w / 2, y, text)
-            y += lh
-        }
-    }
-
-    /**
-     * Перенос по словам на минимум строк, но строки примерно равной ширины:
-     * на 4:3 «...перезапустите сервер ГУ» иначе оставляет «ГУ» одно на второй строке.
-     */
-    private fun wrapBalanced(msg: String, maxW: Float, p: Paint): List<String> {
-        val words = msg.split(' ')
-        fun greedy(limit: Float): List<String> {
-            val lines = ArrayList<String>()
-            var cur = ""
-            for (word in words) {
-                val t = if (cur.isEmpty()) word else "$cur $word"
-                if (p.measureText(t) > limit && cur.isNotEmpty()) {
-                    lines.add(cur)
-                    cur = word
-                } else {
-                    cur = t
-                }
-            }
-            if (cur.isNotEmpty()) lines.add(cur)
-            return lines
-        }
-        val base = greedy(maxW)
-        if (base.size < 2) return base
-        // сужаем лимит, пока число строк не растёт: последняя строка добирает слова у предыдущих
-        var best = base
-        var limit = p.measureText(msg) / base.size
-        while (limit < maxW) {
-            val l = greedy(limit)
-            if (l.size == base.size) {
-                best = l
-                break
-            }
-            limit += maxW * 0.02f
-        }
-        return best
-    }
-
-    /**
-     * Глиф иконки (ic_launcher_foreground.xml, 48×48): дуги-стрелки раз в [SWAP_S] меняются местами
-     * поворотом на 180° вокруг экрана, на каждом обмене от логотипа расходится янтарное кольцо.
-     * Состояние только от t: snapshot() с любой нити рисует тот же кадр.
-     */
-    private fun drawLogo(c: Canvas, cx: Float, cy: Float, size: Float, t: Float, p: Paint) {
-        val phase = t % SWAP_S
-        val k = (phase / SPIN_S).coerceAtMost(1f)
-        val ease = k * k * (3 - 2 * k)
-        val angle = (t / SWAP_S).toInt() * 180f + ease * 180f
-
-        val s = size / 48f
+        // Знак Android Auto: белая «A», красная дорога. Координаты — из viewBox 24x24.
+        val glyph = maxOf(84f, 190f * s)
+        val g = glyph / 24f
         c.save()
-        c.translate(cx - 24f * s, cy - 24f * s)
-        c.scale(s, s)
-
-        // волна обмена: кольцо от радиуса дуг наружу, тает к концу цикла
-        val r = phase / SWAP_S
-        p.style = Paint.Style.STROKE
-        p.strokeWidth = 1.2f
-        p.color = AMBER
-        p.alpha = ((1 - r) * 110).toInt()
-        c.drawCircle(24f, 24f, 15f + r * 9f, p)
-        p.alpha = 255
-
-        p.strokeCap = Paint.Cap.ROUND
-        p.strokeJoin = Paint.Join.ROUND
-        c.save()
-        c.rotate(angle, 24f, 24f)
-        drawArrow(c, ARC_WHITE, HEAD_WHITE, Color.WHITE, p)
-        drawArrow(c, ARC_AMBER, HEAD_AMBER, AMBER, p)
-        c.restore()
-
-        // экран в центре неподвижен
-        p.style = Paint.Style.STROKE
-        p.color = Color.WHITE
-        p.strokeWidth = 2f
-        c.drawRoundRect(16.5f, 19.25f, 31.5f, 29.25f, 2.2f, 2.2f, p)
-        p.color = AMBER
-        p.strokeWidth = 1.8f
-        c.drawLine(19.6f, 25.4f, 28.4f, 25.4f, p)
-        c.restore()
-        p.strokeCap = Paint.Cap.BUTT
+        c.translate(w / 2f - 12f * g, h * 0.36f - 12f * g)
+        c.scale(g, g)
+        val a = Path()
+        a.moveTo(12f, 0f)
+        a.cubicTo(11.4f, 0f, 10.89f, 0.32f, 10.61f, 0.8f)
+        a.lineTo(0.48f, 18.4f)
+        a.quadTo(0.48f, 20.8f, 1.87f, 20.8f)
+        a.lineTo(3.87f, 20.8f)
+        a.lineTo(11.57f, 7.22f)
+        a.lineTo(12f, 6.45f)
+        a.lineTo(20.13f, 20.8f)
+        a.lineTo(22.13f, 20.8f)
+        a.quadTo(23.52f, 20.8f, 23.52f, 18.4f)
+        a.lineTo(13.39f, 0.8f)
+        a.quadTo(13.39f, 0f, 12f, 0f)
+        a.close()
+        val road = Path()
+        road.moveTo(12f, 7.47f)
+        road.lineTo(2.93f, 23.47f)
+        road.lineTo(3.47f, 24f)
+        road.lineTo(12f, 20.8f)
+        road.lineTo(20.53f, 24f)
+        road.lineTo(21.07f, 23.47f)
+        road.close()
         p.style = Paint.Style.FILL
-    }
+        p.alpha = 255
+        p.color = Color.WHITE
+        c.drawPath(a, p)
+        p.color = RED
+        c.drawPath(road, p)
+        c.restore()
 
-    private fun drawArrow(c: Canvas, arc: Path, head: Path, color: Int, p: Paint) {
-        p.color = color
+        // Конвертация: верхняя стрелка вправо (белая), нижняя влево (красная).
+        val signCx = w / 2f
+        val signCy = h * 0.515f
+        val half = maxOf(40f, 90f * s)
+        val gap = maxOf(6f, 13f * s)
+        val stroke = maxOf(6f, 7f * s)
+        val headLen = maxOf(14f, 20f * s)
+        val headHalf = maxOf(10f, 14f * s)
+        val topY = signCy - gap
+        val bottomY = signCy + gap
         p.style = Paint.Style.STROKE
-        p.strokeWidth = 3.2f
-        c.drawPath(arc, p)
-        p.style = Paint.Style.FILL_AND_STROKE
-        p.strokeWidth = 1f
+        p.strokeWidth = stroke
+        p.strokeCap = Paint.Cap.BUTT
+        p.strokeJoin = Paint.Join.MITER
+        p.color = Color.WHITE
+        c.drawLine(signCx - half, topY, signCx + half - headLen * 0.5f, topY, p)
+        val head = Path()
+        head.moveTo(signCx + half, topY)
+        head.lineTo(signCx + half - headLen, topY - headHalf)
+        head.lineTo(signCx + half - headLen, topY + headHalf)
+        head.close()
+        p.style = Paint.Style.FILL
         c.drawPath(head, p)
+
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = stroke
+        p.color = RED
+        c.drawLine(signCx + half, bottomY, signCx - half + headLen * 0.5f, bottomY, p)
+        head.reset()
+        head.moveTo(signCx - half, bottomY)
+        head.lineTo(signCx - half + headLen, bottomY - headHalf)
+        head.lineTo(signCx - half + headLen, bottomY + headHalf)
+        head.close()
+        p.style = Paint.Style.FILL
+        p.color = RED
+        c.drawPath(head, p)
+
+        // Подпись: моноширинный Google Sans, мелко — это кредит, а не заголовок.
+        p.typeface = labelTypeface ?: Typeface.MONOSPACE
+        p.textSize = maxOf(12f, 24f * s)
+        p.textAlign = Paint.Align.CENTER
+        p.letterSpacing = 0.03f
+        p.style = Paint.Style.FILL
+        p.color = TEXT
+        c.drawText("By Sajan", w / 2f, h * 0.605f, p)
+        p.letterSpacing = 0f
+
+        // Полоса: сегмент идёт слева направо и гаснет на краях.
+        val lineH = maxOf(4f, 5f * s)
+        val trackW = w * TRACK_W
+        val barW = trackW * BAR_W
+        val left = (w - trackW) / 2f
+        val top = h * 0.69f - lineH / 2f
+        p.style = Paint.Style.FILL
+        p.color = TRACK
+        c.drawRoundRect(left, top, left + trackW, top + lineH, lineH / 2f, lineH / 2f, p)
+
+        val phase = (t % SWEEP_S) / SWEEP_S
+        val ease = phase * phase * (3f - 2f * phase)
+        val fade = minOf(1f, minOf(phase / 0.12f, (1f - phase) / 0.18f)).coerceAtLeast(0f)
+        val x = left + (trackW - barW) * ease
+        p.color = RED
+        p.alpha = (255 * fade).toInt()
+        c.drawRoundRect(x, top, x + barW, top + lineH, lineH / 2f, lineH / 2f, p)
+        p.alpha = 255
     }
 
     private fun draw(c: Canvas) {
-        drawBanner(c, banner ?: "")
+        drawBanner(c, width, height, framesRendered, fill)
     }
 
     companion object {
         const val MIME = "video/avc"
 
-        private val BG = Color.rgb(0x0E, 0x14, 0x1A) // фон иконки
-        private val AMBER = Color.rgb(0xF2, 0xB3, 0x3D)
-        private val STATUS = Color.rgb(0xB8, 0xC4, 0xCC)
-        private val WORDMARK: Typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
+        private val BG = Color.rgb(0x0B, 0x0F, 0x12) // фон иконки
+        private val RED = Color.rgb(0xE5, 0x39, 0x35)
+        private val TRACK = Color.rgb(0x2A, 0x1D, 0x1D)
+        private val TEXT = Color.rgb(0xDC, 0xE3, 0xE8)
 
-        /** Цикл обмена стрелок и длительность самого поворота внутри него, секунды. */
-        private const val SWAP_S = 2.2f
-        private const val SPIN_S = 0.8f
+        /** Период хода полосы, секунды. */
+        private const val SWEEP_S = 1.8f
 
-        // дуги — окружность r=15 вокруг (24,24): 195°..318° и её отражение 15°..138°
-        private val ARC_WHITE = Path().apply { addArc(RectF(9f, 9f, 39f, 39f), 195f, 123f) }
-        private val ARC_AMBER = Path().apply { addArc(RectF(9f, 9f, 39f, 39f), 15f, 123f) }
-        private val HEAD_WHITE = triangle(39.24f, 10.28f, 40.5f, 19.9f, 31.06f, 17.64f)
-        private val HEAD_AMBER = triangle(8.76f, 37.72f, 7.5f, 28.1f, 16.94f, 30.36f)
-
-        private fun triangle(x1: Float, y1: Float, x2: Float, y2: Float, x3: Float, y3: Float) = Path().apply {
-            moveTo(x1, y1)
-            lineTo(x2, y2)
-            lineTo(x3, y3)
-            close()
-        }
+        /** Полоса под кольцом: доля ширины кадра и доля трека, которую занимает сегмент. */
+        private const val TRACK_W = 0.2396f
+        private const val BAR_W = 0.3478f
     }
 }

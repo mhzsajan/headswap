@@ -1,5 +1,6 @@
 package com.yegorkapomidorka.headswap
 
+import android.graphics.Typeface
 import android.os.Build
 import android.os.SystemClock
 import com.yegorkapomidorka.headswap.aa.AaBridgeCore
@@ -58,6 +59,8 @@ class CarLifeSession(
     private val thermal: ThermalSource = ThermalSource.NONE,
     /** Размер кадра из VIDEO_ENCODER_INIT ГУ (для подсказки «Как просит ГУ» в разделе для разработчиков). */
     private val onHuSize: (Int, Int) -> Unit = { _, _ -> },
+    /** Шрифт подписи на заглушке; null — системный monospace. */
+    private val labelTypeface: Typeface? = null,
     private val onClosed: (String) -> Unit,
 ) : VideoSource.Listener, CarlifeLink {
 
@@ -583,7 +586,10 @@ class CarLifeSession(
                 bridge.huMazda20622111 -> minOf(mode.bitrate, AaBridgeCore.MAZDA_20622111_CEILING_BPS)
                 else -> mode.bitrate
             }
-            val s = VideoSource(pendingW, pendingH, pendingFps, if (air) bitratePolicy.current else stubBps, this)
+            val s = VideoSource(
+                pendingW, pendingH, pendingFps,
+                if (air) bitratePolicy.current else stubBps, this, labelTypeface,
+            )
             s.banner = text
             try {
                 s.start()
