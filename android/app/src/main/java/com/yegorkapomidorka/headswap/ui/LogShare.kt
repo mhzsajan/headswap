@@ -235,6 +235,7 @@ object LogShare {
             appendLine("  frame rate: ${aa.fpsSetting.name}")
             appendLine("  USB audio: ${aa.usbAudio}")
             appendLine("  music sample rate: ${aa.musicRate.name}")
+            appendLine("  music chunk size: ${aa.mediaChunk.name}")
             appendLine("  my car: ${aa.carPreset?.let { "${it.name}${if (aa.carSettings == it.settings) "" else ", settings changed manually"}" } ?: "not selected"}")
             appendLine("  certificate: ${aa.certSet}")
             appendLine("  head unit server auto-start: ${aa.autoServer}")

@@ -131,7 +131,7 @@ class CarLifeSession(
     /** brand + model + sdk из отправленного MD_INFO: ключ ветки авторизации 2.0. */
     private var mdInfoKey = ""
     private var huAuthResult: String? = null
-    private var touchMode = "не было тачей"
+    private var touchMode = "no touches yet"
     private var touchCount = 0
     private var maxFingers = 0
     private var lastMoveFingers = 0
@@ -290,7 +290,7 @@ class CarLifeSession(
                 }
                 huMajor = maj ?: 0
                 huMinor = min ?: 0
-                CarLifeState.protocol = "ГУ шлёт версию $huVersion"
+                CarLifeState.protocol = "head unit sends version $huVersion"
                 AppLog.i("== ВЕРСИЯ ПРОТОКОЛА ГУ: major=$maj minor=$min")
                 WLog.ev(WLog.HS, "HU_PROTOCOL_VERSION", "version" to huVersion)
                 matchSent = true
@@ -335,7 +335,7 @@ class CarLifeSession(
                 val v2 = Handshake.isAuthV2(rndStr)
                 AppLog.i("== ГУ ШЛЁТ HU_AUTHEN_REQUEST randomValue=$authRandom")
                 AppLog.i("== AUTHEN randomValue ${if (v2) "начинается с \"2.0;\"" else "не начинается с \"2.0;\""}")
-                CarLifeState.auth = "HU_AUTHEN_REQUEST пришёл, ${if (v2) "2.0;" else "не 2.0;"}"
+                CarLifeState.auth = "HU_AUTHEN_REQUEST received, ${if (v2) "2.0;" else "not 2.0;"}"
                 // как Baidu 8.6.7 (PrivateKeyManager.encryptContentProcess): сразу по запросу подпись приватным ключом Baidu,
                 // для "2.0;" md5-код от MD_INFO; MD_AUTHEN_RESULT{true} по-прежнему уходит после STATISTIC_INFO
                 val enc = if (rndStr == null) null else try {
@@ -349,7 +349,7 @@ class CarLifeSession(
                 } else {
                     if (rndStr != null && HuAuth.isV2Branch(rndStr)) AppLog.i("== AUTHEN 2.0: md5 от \"CARLIFE\" + \"$mdInfoKey\" + дата")
                     AppLog.i("== отвечаю MD_AUTHEN_RESPONSE encryptValue=$enc")
-                    CarLifeState.auth += ", MD_AUTHEN_RESPONSE отправлен"
+                    CarLifeState.auth += ", MD_AUTHEN_RESPONSE sent"
                     sendCmd(Msg.MD_AUTHEN_RESPONSE, Msgs.authenResponse(enc))
                 }
             }
@@ -488,7 +488,7 @@ class CarLifeSession(
             return
         }
         // размер задаёт видео-режим (по умолчанию 1280x720 fps 30: ГУ Honda принимает и показывает целиком, проверено в машине)
-        val (w, h, why) = Triple(mode.outW, mode.outH, "мост: режим ${mode.label}")
+        val (w, h, why) = Triple(mode.outW, mode.outH, "bridge: mode ${mode.label}")
         val fps = Handshake.chooseFps(cfg.fpsSetting, rf, huMaxFps())
         pendingW = w
         pendingH = h
@@ -497,7 +497,7 @@ class CarLifeSession(
         videoInited = true
         chosen = "${w}x$h ($why)"
         AppLog.i("== ОТВЕЧАЮ INIT_DONE ${w}x$h fps=$fps ($why; ГУ просит fps=$rf, настройка ${cfg.fpsSetting.name}${if (bridge.transcodeEnabled) "" else ", passthrough: частота не регулируется"})")
-        CarLifeState.video = "ГУ просит $requested, кодирую ${w}x$h"
+        CarLifeState.video = "head unit asks for $requested, encoding ${w}x$h"
         sendCmd(Msg.VIDEO_ENCODER_INIT_DONE, Msgs.videoEncoderInfo(w, h, fps))
         sendCmd(Msg.FOREGROUND, null)
         // VW Tharu XR 2026 (CarLife 2.1) после INIT_DONE START не шлёт, ждёт видео и через ~5.5 с рвёт USB
@@ -547,7 +547,7 @@ class CarLifeSession(
         if (pendingW <= 0) {
             pendingW = mode.outW
             pendingH = mode.outH
-            chosen = "${mode.outW}x${mode.outH} (START без INIT, мост, режим ${mode.label})"
+            chosen = "${mode.outW}x${mode.outH} (START without INIT, bridge, mode ${mode.label})"
         }
         carlifeStarted = true
         synchronized(videoLock) {
@@ -942,8 +942,8 @@ class CarLifeSession(
         }
         val t = CarlifeTouch.parse(m.type, m.body) ?: return
         setTouchMode(
-            if (m.type == Msg.TOUCH_ACTION) "TOUCH_ACTION (прозрачный, TRANSPARENT_SEND_TOUCH_EVENT=true)"
-            else "жестовый (отдельные коды 0x68002..0x6800D)"
+            if (m.type == Msg.TOUCH_ACTION) "TOUCH_ACTION (transparent, TRANSPARENT_SEND_TOUCH_EVENT=true)"
+            else "gesture (separate codes 0x68002..0x6800D)"
         )
         touchCount++
         val n = t.fingers
@@ -955,7 +955,7 @@ class CarLifeSession(
             lastMoveFingers = if (t.masked == 2) n else 0
         }
         if (t.masked in TOUCH_TO_AA) bridge.onCarlifeTouch(t.action, t.x, t.y, t.px, t.py)
-        CarLifeState.touch = "$touchMode; событий=$touchCount; пальцев макс=$maxFingers; последний act=${t.action} x=${t.x} y=${t.y}" +
+        CarLifeState.touch = "$touchMode; events=$touchCount; max fingers=$maxFingers; last act=${t.action} x=${t.x} y=${t.y}" +
             (if (n > 1) " px=${t.px} py=${t.py}" else "")
     }
 
@@ -1132,7 +1132,7 @@ class CarLifeSession(
             AppLog.i("видео: отправлено кадров=$vFrames (ключевых=$vKeys) байт=$vBytes heartbeat=$vBeats сброшено=$vDropped очередь=${transport.queueSize(Ch.VIDEO)} (+${vFrames - lastStatsFrames} за ${(now - lastStatsAt) / 1000}с)")
             lastStatsAt = now
             lastStatsFrames = vFrames
-            CarLifeState.video = "$chosen; кадров=$vFrames hb=$vBeats"
+            CarLifeState.video = "$chosen; frames=$vFrames hb=$vBeats"
         }
     }
 

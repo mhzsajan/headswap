@@ -119,13 +119,13 @@ enum class VideoMode(
      */
     override fun describe(densityOverride: Int): String {
         fun f(v: Float) = String.format(Locale.US, "%.3f", v)
-        val cropText = if (crop.isNone) "без кропа" else buildString {
-            append("кроп")
+        val cropText = if (crop.isNone) "no crop" else buildString {
+            append("crop")
             if (crop.u0 != 0f) append(" u ${f(crop.u0)}..${f(crop.u1)}")
             if (crop.v0 != 0f) append(" v ${f(crop.v0)}..${f(crop.v1)}")
         }
-        val dens = if (densityOverride == AaDensity.AUTO) "$density" else "$densityOverride (вручную, авто $density)"
-        return "видео-режим $name: AA $aaResolution margins ${marginW}x$marginH density $dens, CarLife ${outW}x$outH, $cropText"
+        val dens = if (densityOverride == AaDensity.AUTO) "$density" else "$densityOverride (manual, auto $density)"
+        return "video mode $name: AA $aaResolution margins ${marginW}x$marginH density $dens, CarLife ${outW}x$outH, $cropText"
     }
 
     companion object {
@@ -177,7 +177,7 @@ data class CustomVideoMode(override val outW: Int, override val outH: Int) : Vid
         val dens = densityFor(densityOverride)
         val mbps = bitrate / 1_000_000.0
         val rate = if (bitrate % 1_000_000 == 0) "${bitrate / 1_000_000}M" else String.format(Locale.US, "%.1fM", mbps)
-        return "custom ${outW}x$outH ← AA $aaResolution поля ${marginW}x$marginH ×${String.format(Locale.US, "%.3f", scale)} dpi $dens $rate"
+        return "custom ${outW}x$outH <- AA $aaResolution margins ${marginW}x$marginH x${String.format(Locale.US, "%.3f", scale)} dpi $dens $rate"
     }
 
     companion object {

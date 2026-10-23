@@ -72,9 +72,9 @@ class CarlifeBtProbe(
         accepts = 0     // за этот запуск: в строке `stop` accepts= считаются подключения ГУ с последнего start
         val adapter = ctx.getSystemService(BluetoothManager::class.java)?.adapter
         when {
-            adapter == null -> return fail("нет адаптера")
-            !hasPermission() -> return fail("нет разрешения BLUETOOTH_CONNECT")
-            !adapter.isEnabled -> return fail("Bluetooth выключен")
+            adapter == null -> return fail("no adapter")
+            !hasPermission() -> return fail("no BLUETOOTH_CONNECT permission")
+            !adapter.isEnabled -> return fail("Bluetooth is off")
         }
         for ((tag, uuid) in UUIDS) {
             val ss = try {
@@ -87,7 +87,7 @@ class CarlifeBtProbe(
             WLog.ev(WLog.BT, "listen", "uuid" to tag, "name" to SERVICE_NAME)
             Thread({ acceptLoop(tag, ss) }, "bt-accept-$tag").apply { isDaemon = true }.start()
         }
-        CarLifeState.btProbe = if (synchronized(lock) { servers.isEmpty() }) "не слушает" else "слушаю carlife, ГУ не подключалась"
+        CarLifeState.btProbe = if (synchronized(lock) { servers.isEmpty() }) "not listening" else "listening on carlife, head unit has not connected"
     }
 
     fun stop(why: String) {
@@ -106,7 +106,7 @@ class CarlifeBtProbe(
 
     private fun fail(why: String) {
         running = false
-        CarLifeState.btProbe = "не слушает: $why"
+        CarLifeState.btProbe = "not listening: $why"
         WLog.ev(WLog.BT, "off", "why" to why)
     }
 
@@ -129,7 +129,7 @@ class CarlifeBtProbe(
         val name = try { dev?.name } catch (_: SecurityException) { null }
         WLog.ev(WLog.BT, "accept", "uuid" to tag, "dev" to WLog.maskMac(dev?.address), "devName" to name)
         AppLog.i("BT carlife: ГУ подключилась по Bluetooth ($tag, ${name ?: "?"})")
-        CarLifeState.btProbe = "ГУ подключилась ($tag, ${name ?: "?"})"
+        CarLifeState.btProbe = "head unit connected ($tag, ${name ?: "?"})"
         val t0 = SystemClock.elapsedRealtime()
         val parser = BtFrameParser()
         var why = "?"
@@ -157,14 +157,14 @@ class CarlifeBtProbe(
                     WLog.ev(WLog.BT, "rx", "type" to BtMsg.name(f.type), "len" to f.body.size, *kv.toTypedArray())
                     when (f.type) {
                         BtMsg.HU_WIRELESS_INFO -> {
-                            CarLifeState.btProbe = "ГУ ответила: ${kv.joinToString(" ") { "${it.first}=${it.second}" }}"
+                            CarLifeState.btProbe = "head unit replied: ${kv.joinToString(" ") { "${it.first}=${it.second}" }}"
                             if (!targetAsked) {
                                 targetAsked = true
                                 send(s, BtMsg.MD_TARGET_INFO_REQUEST)
                             }
                         }
                         BtMsg.HU_TARGET_INFO -> {
-                            CarLifeState.btProbe = "ГУ прислала реквизиты Wi-Fi Direct, вхожу в группу"
+                            CarLifeState.btProbe = "head unit sent Wi-Fi Direct credentials, joining the group"
                             val t = P2pTarget.parse(f.body)
                             if (t == null) WLog.ev(WLog.P2P, "off", "why" to "TARGET_INFO не разобран")
                             else {
@@ -175,7 +175,7 @@ class CarlifeBtProbe(
                         }
                         BtMsg.HU_IP_REQUEST -> {
                             ipRequested = true
-                            CarLifeState.btProbe = "ГУ просит IP телефона" + if (p2pIp == null) ", жду вход в группу" else ""
+                            CarLifeState.btProbe = "head unit asks for the phone's IP" + if (p2pIp == null) ", waiting to join the group" else ""
                             sendIpIfReady()
                         }
                     }
@@ -201,7 +201,7 @@ class CarlifeBtProbe(
 
     private fun onP2pJoined(ip: java.net.Inet4Address) {
         p2pIp = ip.hostAddress
-        CarLifeState.btProbe = "телефон в группе ГУ (${ip.hostAddress})" + if (ipRequested) "" else ", ГУ ещё не просила IP"
+        CarLifeState.btProbe = "phone is in the head unit's group (${ip.hostAddress})" + if (ipRequested) "" else ", head unit has not asked for the IP yet"
         if (rejoining) WLog.ev(WLog.P2P, "rejoin-joined", "ipRequested" to ipRequested)
         rejoining = false
         rejoinGen++
@@ -260,7 +260,7 @@ class CarlifeBtProbe(
         try {
             send(s, BtMsg.MD_WIFI_IP, BtMsg.wifiIp(ip))
             ipRequested = false
-            CarLifeState.btProbe = "отдал ГУ IP $ip, жду TCP от ГУ"
+            CarLifeState.btProbe = "gave the head unit IP $ip, waiting for TCP from the head unit"
             AppLog.i("BT carlife: отдал ГУ адрес телефона $ip")
         } catch (e: IOException) {
             WLog.ev(WLog.BT, "tx-fail", "type" to "WIFI_IP", "err" to e.message)

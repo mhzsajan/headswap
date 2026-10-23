@@ -87,11 +87,11 @@ class VideoModeTest {
     @Test
     fun describeLine() {
         assertEquals(
-            "видео-режим WIDE: AA 1280x720 margins 0x240 density 160, CarLife 1280x480, кроп v 0.167..0.833",
+            "video mode WIDE: AA 1280x720 margins 0x240 density 160, CarLife 1280x480, crop v 0.167..0.833",
             VideoMode.WIDE.describe(),
         )
         assertEquals(
-            "видео-режим R720: AA 1280x720 margins 0x0 density 160, CarLife 1280x720, без кропа",
+            "video mode R720: AA 1280x720 margins 0x0 density 160, CarLife 1280x720, no crop",
             VideoMode.R720.describe(),
         )
     }
@@ -280,7 +280,7 @@ class VideoModeTest {
     fun densityDescribeMarksOverride() {
         assertEquals(VideoMode.R720.describe(), VideoMode.R720.describe(AaDensity.AUTO))
         assertEquals(
-            "видео-режим R720: AA 1280x720 margins 0x0 density 200 (вручную, авто 160), CarLife 1280x720, без кропа",
+            "video mode R720: AA 1280x720 margins 0x0 density 200 (manual, auto 160), CarLife 1280x720, no crop",
             VideoMode.R720.describe(200),
         )
     }

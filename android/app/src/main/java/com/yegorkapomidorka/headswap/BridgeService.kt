@@ -676,7 +676,7 @@ class BridgeService : Service() {
             .setAutoCancel(true)
             .build()
         getSystemService(NotificationManager::class.java).notify(BT_HINT_NOTIF_ID, n)
-        CarLifeState.btProbe = "машина подключена по Bluetooth, но carlife не открыла: переподключите Bluetooth"
+        CarLifeState.btProbe = "car is connected over Bluetooth, but CarLife did not open: reconnect Bluetooth"
         WLog.ev(WLog.TRIGGER, "bt-hint", "carBt" to carBt, "mode" to mode.name)
     }
 
@@ -846,6 +846,7 @@ class BridgeService : Service() {
             core.micModeProvider = { aaPrefs.micMode }
             core.musicRateProvider = { aaPrefs.musicRate }
             core.pauseMemory = aaPrefs          // выученные на PAUSE настройки ГУ переживают перезапуск
+            core.mediaChunkProvider = { aaPrefs.mediaChunk }
             core.phoneMic = PhoneMicCapture(applicationContext)
             core.usbAudioEnabled = aaPrefs.usbAudio
             EqLive.settings = aaPrefs.eq

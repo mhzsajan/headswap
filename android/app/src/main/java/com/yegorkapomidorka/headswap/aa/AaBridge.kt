@@ -191,6 +191,8 @@ class AaBridgeCore(
     @Volatile var musicRateProvider: () -> MusicRate = { MusicRate.DEFAULT }
     private var resampler: MusicResampler? = null    // null при 48000: PCM идёт как есть
     private var mediaRateLogged = MEDIA_RATE
+    @Volatile var mediaChunkProvider: () -> MediaChunk = { MediaChunk.DEFAULT }
+    private var mediaChunkLogged = CarlifeAudio.MAX_CHUNK
     private val audioInited = HashMap<Int, Boolean>()
     private val audioLogged = HashMap<Int, Long>()
 
@@ -241,7 +243,10 @@ class AaBridgeCore(
     }
 
     private val ttsStopTimer = AudioTimer()
-    private val vrStopTimer = AudioTimer()
+
+    /** h425: VW CNS2 Delphi копит MOVE ~190 мс и шлёт пачкой; раздаём пачку равномерно. Только при [huVwCns2Delphi]. */
+    private val touchPacer = TouchBurstPacer(clockMs, audioSched) { a, x, y, px, py -> dispatchTouch(a, x, y, px, py) }
+    @Volatile private var touchPacerLogged = false
     private val mediaReleaseTimer = AudioTimer()
     private val voiceExitTimer = AudioTimer()
     private var carlifePaused = false          // VIDEO_ENCODER_PAUSE после последнего START
@@ -368,11 +373,13 @@ class AaBridgeCore(
         huMazda20622111 = false                // STATISTIC_INFO придёт заново в этой сессии
         huVwCns2Delphi = false                 // STATISTIC_INFO придёт заново в этой сессии
         vrReply = false
-        vrStopTimer.cancel()
+        touchPacer.reset()
+        touchPacerLogged = false
         h295TouchAt = NEVER
         h295LastTrigger = NEVER
         h295LastTouchAt = NEVER
         mediaRateLogged = MEDIA_RATE
+        mediaChunkLogged = CarlifeAudio.MAX_CHUNK
         resampler?.reset()
         if (aaVideoSeen) placeholderText = TEXT_WAIT_FRAME
         meta.onAttach()
@@ -687,7 +694,15 @@ class AaBridgeCore(
      * [VideoMode.mapTouch] (без margin-ов 1:1). Один палец уходит в AA так же, как до мультитача (id 0, action_index 0).
      */
     fun onCarlifeTouch(action: Int, x: Int, y: Int, px: Int = 0, py: Int = 0) {
-        dispatchTouch(action, x, y, px, py)
+        if (huVwCns2Delphi) {
+            touchPacer.onTouch(action, x, y, px, py)
+            if (touchPacer.bursts == 1 && !touchPacerLogged) {
+                touchPacerLogged = true
+                log("BRIDGE тач: ГУ шлёт MOVE пачками, раздаю равномерно между пачками (h425)", true)
+            }
+        } else {
+            dispatchTouch(action, x, y, px, py)
+        }
         onHuTouch(action and 0xFF)                                            // вне touchLock: вложенных блокировок нет
     }
 
@@ -1000,9 +1015,14 @@ class AaBridgeCore(
                 if (out.isEmpty()) return
             }
         }
+        val chunkMax = if (ch == CarlifeAudio.CH_MEDIA) mediaChunkProvider().bytes ?: CarlifeAudio.MAX_CHUNK else CarlifeAudio.MAX_CHUNK
+        if (ch == CarlifeAudio.CH_MEDIA && chunkMax != mediaChunkLogged) {
+            mediaChunkLogged = chunkMax
+            log("BRIDGE музыка: пакеты по $chunkMax Б (настройка)", true)
+        }
         var off = 0
         while (off < out.size) {
-            val n = minOf(CarlifeAudio.MAX_CHUNK, out.size - off)
+            val n = minOf(chunkMax, out.size - off)
             val chunk = if (off == 0 && n == out.size) out else out.copyOfRange(off, off + n)
             if (!link.sendAudio(ch, CarlifeAudio.dataType(ch), chunk)) {
                 audioDropped++
@@ -1026,11 +1046,10 @@ class AaBridgeCore(
         val ch = carlifeChannel(chan) ?: return
         log("BRIDGE AA audio STOP ch$chan", true)
         if (vrReply && ch == CarlifeAudio.CH_TTS) {
-            // AA режет ответ на фразы с паузой 0,1-0,3 с: VR не переоткрываем на каждую (заикание, h425)
-            if (!vrStopTimer.pending) {
-                log("BRIDGE CarLife VR STOP отложен на ${TTS_STOP_DELAY_MS} мс", true)
-                vrStopTimer.start(TTS_STOP_DELAY_MS) { vrStopNow() }
-            }
+            vrReply = false
+            link.sendAudio(CarlifeAudio.CH_VR, CarlifeAudio.VR_STOP, ByteArray(0))
+            log("BRIDGE CarLife VR STOP (0x%08x)".format(CarlifeAudio.VR_STOP), true)
+            vrModuleOff("последний VR STOP после голосовой сессии")
             return
         }
         if (ch == CarlifeAudio.CH_MEDIA) {
@@ -1050,7 +1069,6 @@ class AaBridgeCore(
      * VW CNS2 Delphi (h425) речь ассистента, пришедшую в TTS сразу после записи микрофона, не играет.
      */
     private fun sendVrReply(chan: Int, pcm: ByteArray) {
-        if (vrStopTimer.cancel()) log("BRIDGE VR STOP отменён: речь ch$chan до истечения ${TTS_STOP_DELAY_MS} мс, INIT не повторяю", true)
         if (!vrReply) {
             if (audioInited[CarlifeAudio.CH_TTS] == true) stopAudio(CarlifeAudio.CH_TTS)
             if (!link.sendAudio(CarlifeAudio.CH_VR, CarlifeAudio.VR_INIT, CarlifeAudio.initBody(16000, 1, 16))) {
@@ -1060,7 +1078,6 @@ class AaBridgeCore(
             vrReply = true
             ttsPackets = 0
             log("BRIDGE CarLife VR INIT 16000Гц 1к 16бит (0x%08x): речь AA ch$chan в голосовой сессии".format(CarlifeAudio.VR_INIT), true)
-            sendTtsPreroll(CarlifeAudio.CH_VR, CarlifeAudio.VR_DATA)
         }
         var off = 0
         while (off < pcm.size) {
@@ -1073,10 +1090,14 @@ class AaBridgeCore(
         if (++ttsPackets <= TTS_DIAG_PACKETS) log("BRIDGE VR пакет #$ttsPackets: ${pcm.size} Б", false)
     }
 
-    private fun vrStopNow() {
-        vrReply = false
-        link.sendAudio(CarlifeAudio.CH_VR, CarlifeAudio.VR_STOP, ByteArray(0))
-        log("BRIDGE CarLife VR STOP (0x%08x)".format(CarlifeAudio.VR_STOP), true)
+    /**
+     * h425: VW CNS2 Delphi после ответа в канале VR оставляет кнопки громкости на голосовом канале, пока не переткнуть
+     * кабель. MODULE_STATUS VR=0 уходит при закрытии микрофона, но ответ в VR идёт уже после него: повторяем VR=0,
+     * когда и голосовая сессия AA кончилась, и поток VR закрыт.
+     */
+    private fun vrModuleOff(why: String) {
+        if (!huVwCns2Delphi || voice || vrReply) return
+        if (link.sendModuleStatus(CarlifeAudio.MODULE_VR, 0)) log("BRIDGE CarLife MODULE_STATUS VR=0 ($why)", true)
     }
 
     // --- голосовая сессия Ассистента: MEDIA на паузу, данные не пересылаем; выход со сглаживанием пачки 2/2/1/2/2 ---
@@ -1098,6 +1119,7 @@ class AaBridgeCore(
                 voiceExitTimer.start(VOICE_EXIT_DELAY_MS) {
                     voice = false
                     log("BRIDGE голосовая сессия: выход, MEDIA поднимется через INIT на первых данных", true)
+                    vrModuleOff("выход из голосовой сессии")
                 }
             }
             else -> log("BRIDGE голосовая сессия: status=$status не знаю, игнор", false)
@@ -1140,19 +1162,18 @@ class AaBridgeCore(
      * есть запас; AA отдаёт речь в реальном времени с первого пакета, запаса нет. Нули дают ГУ открыть
      * тракт на тишине и держат буфер на TTS_PREROLL_MS впереди до конца фразы.
      */
-    private fun sendTtsPreroll(ch: Int = CarlifeAudio.CH_TTS, type: Int = CarlifeAudio.TTS_DATA) {
-        val name = if (ch == CarlifeAudio.CH_VR) "VR" else "TTS"
+    private fun sendTtsPreroll() {
         val zeros = ByteArray(TTS_PREROLL_BYTES)
         var off = 0
         while (off < zeros.size) {
             val n = minOf(TTS_PREROLL_CHUNK, zeros.size - off)
-            if (!link.sendAudio(ch, type, zeros.copyOfRange(off, off + n))) {
-                log("BRIDGE $name пре-ролл: очередь полна, отправлено ${off * 1000 / TTS_BYTES_PER_SEC} из $TTS_PREROLL_MS мс", true)
+            if (!link.sendAudio(CarlifeAudio.CH_TTS, CarlifeAudio.TTS_DATA, zeros.copyOfRange(off, off + n))) {
+                log("BRIDGE TTS пре-ролл: очередь полна, отправлено ${off * 1000 / TTS_BYTES_PER_SEC} из $TTS_PREROLL_MS мс", true)
                 return
             }
             off += n
         }
-        log("BRIDGE $name пре-ролл $TTS_PREROLL_MS мс тишины (${zeros.size} Б) после INIT", true)
+        log("BRIDGE TTS пре-ролл $TTS_PREROLL_MS мс тишины (${zeros.size} Б) после INIT", true)
     }
 
     /** Фактический TTS_STOP (таймер debounce); после него MEDIA-пакеты ждут ещё MEDIA_AFTER_TTS_MS. */

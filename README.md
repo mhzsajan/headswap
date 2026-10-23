@@ -8,15 +8,19 @@ This is the **`mhzsajan/headswap` fork**, focused on connection reliability and 
 
 ## What this fork changes
 
-Version **2.5.0-reliability1** (`versionCode 60`):
+Version **2.5.0-reliability2** (`versionCode 63`), on top of upstream **2.5.0**:
 
+- **In-app connection diagnosis.** A "Why it won't connect?" screen reads the local log, lists likely causes with concrete actions, and records whether each step helped. The analysis runs on the phone; the log is not uploaded.
+- **`tools/logdiag.py`.** The same rules can be run on a log file from a PC: `py tools/logdiag.py <log>` prints probable causes and advice.
 - **Self-learning pause keepalive.** Some head units stop sending CarLife heartbeats while Android Auto is paused (for example during a phone call or a voice prompt). The bridge now learns, per head-unit channel and transport (`/usb` or `/air`), whether a pause needs its own keepalive. It learns after one failed pause, persists the result, and never learns this for Desay G6S over USB. No hardcoded per-car whitelist.
 - **Upstream reliability fixes merged:**
   - VW CNS3 `20082130`: heartbeat on PAUSE.
   - VW CNS2 Delphi `20082114`: PAUSE heartbeat and VR `MIC_DATA` reassembly.
   - Wi-Fi Direct: better peer logging, reset, and loose peer matching.
   - P2P rejoin and Desay G6S air heartbeat.
-- **English-only UI.** The Russian locale and the in-app language picker were removed. Status text, notifications, onboarding, settings, and the shared diagnostic report are English.
+  - Configurable music chunk size for USB audio.
+- **`syncAaCerts` Gradle task.** Release builds verify that the head-unit certificates are present and copy them from the main worktree when needed, so a release cannot silently ship without them.
+- **English-only UI.** The Russian locale and the in-app language picker were removed. Status text, notifications, onboarding, settings, the connection diagnosis, and the shared diagnostic report are English.
 
 The bridge still accepts the same cars and head units as upstream. If a unit worked before, it should keep working; the new pause logic only adds a fallback.
 

@@ -154,11 +154,11 @@ class CustomVideoModeTest {
     @Test
     fun describeLine() {
         assertEquals(
-            "custom 2240x976 ← AA 1920x1080 поля 0x244 ×1.167 dpi 160 8M",
+            "custom 2240x976 <- AA 1920x1080 margins 0x244 x1.167 dpi 160 8M",
             layout(2240, 976).describe(),
         )
         assertEquals(
-            "custom 1280x640 ← AA 1280x720 поля 0x80 ×1.000 dpi 200 3.6M",
+            "custom 1280x640 <- AA 1280x720 margins 0x80 x1.000 dpi 200 3.6M",
             layout(1280, 640).describe(200),
         )
         assertEquals("custom 2240x976", layout(2240, 976).label)
